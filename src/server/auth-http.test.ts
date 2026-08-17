@@ -2,15 +2,19 @@ import { once } from "node:events";
 import type { AddressInfo } from "node:net";
 import express from "express";
 import { describe, expect, it } from "vitest";
-import { createLanAuth } from "./auth.js";
+import { createLanAuth, lanSessionCookie, readCookie, type LanAuth } from "./auth.js";
 import { registerLanAuthRoutes, requireLanAuth } from "./auth-http.js";
 
-async function withServer<T>(secret: string | undefined, run: (baseUrl: string) => Promise<T>): Promise<T> {
+async function withServer<T>(
+  secret: string | undefined,
+  run: (baseUrl: string, auth: LanAuth) => Promise<T>,
+  onLogout?: (sessionId: string) => void
+): Promise<T> {
   const app = express();
   const auth = createLanAuth(secret, 60);
   app.use(express.json());
   app.get("/api/health", (_request, response) => response.json({ ok: true }));
-  registerLanAuthRoutes(app, auth);
+  registerLanAuthRoutes(app, auth, onLogout);
   app.use("/api", requireLanAuth(auth));
   app.get("/api/private", (_request, response) => response.json({ ok: true }));
   app.use("/outputs", requireLanAuth(auth));
@@ -20,11 +24,20 @@ async function withServer<T>(secret: string | undefined, run: (baseUrl: string) 
   await once(server, "listening");
   const { port } = server.address() as AddressInfo;
   try {
-    return await run(`http://127.0.0.1:${port}`);
+    return await run(`http://127.0.0.1:${port}`, auth);
   } finally {
     server.close();
     await once(server, "close");
   }
+}
+
+async function loginCookie(baseUrl: string, password = "shared-secret"): Promise<{ response: Response; cookie: string }> {
+  const response = await fetch(`${baseUrl}/api/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ password })
+  });
+  return { response, cookie: (response.headers.get("set-cookie") ?? "").split(";", 1)[0] };
 }
 
 describe("LAN authentication HTTP boundary", () => {
@@ -46,17 +59,12 @@ describe("LAN authentication HTTP boundary", () => {
       });
       expect(rejected.status).toBe(401);
 
-      const login = await fetch(`${baseUrl}/api/auth/login`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password: "shared-secret" })
-      });
+      const { response: login, cookie } = await loginCookie(baseUrl);
       expect(login.status).toBe(200);
       const setCookie = login.headers.get("set-cookie") ?? "";
       expect(setCookie).toContain("science_video_session=");
       expect(setCookie).toContain("HttpOnly");
       expect(setCookie).toContain("SameSite=Lax");
-      const cookie = setCookie.split(";", 1)[0];
 
       expect((await fetch(`${baseUrl}/api/private`, { headers: { Cookie: cookie } })).status).toBe(200);
       expect((await fetch(`${baseUrl}/outputs/example.mp4`, { headers: { Cookie: cookie } })).status).toBe(204);
@@ -65,6 +73,31 @@ describe("LAN authentication HTTP boundary", () => {
       expect(logout.status).toBe(200);
       expect(logout.headers.get("set-cookie")).toContain("Max-Age=0");
     });
+  });
+
+  it("passes the authenticated session identity to the logout callback", async () => {
+    const loggedOutSessionIds: string[] = [];
+
+    await withServer(
+      "shared-secret",
+      async (baseUrl, auth) => {
+        const { cookie } = await loginCookie(baseUrl);
+        const token = readCookie(cookie, lanSessionCookie);
+        const session = auth.readSession(token);
+        expect(session).toBeDefined();
+
+        await fetch(`${baseUrl}/api/auth/logout`, {
+          method: "POST",
+          headers: { Cookie: `${lanSessionCookie}=invalid.token.parts` }
+        });
+        expect(loggedOutSessionIds).toEqual([]);
+
+        const logout = await fetch(`${baseUrl}/api/auth/logout`, { method: "POST", headers: { Cookie: cookie } });
+        expect(logout.status).toBe(200);
+        expect(loggedOutSessionIds).toEqual([session?.id]);
+      },
+      (sessionId) => loggedOutSessionIds.push(sessionId)
+    );
   });
 
   it("allows local development when no shared password is configured", async () => {

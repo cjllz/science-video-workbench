@@ -12,7 +12,7 @@ function sessionCookie(value: string, maxAge: number, secure = false): string {
   ].join("; ");
 }
 
-export function registerLanAuthRoutes(app: express.Express, auth: LanAuth): void {
+export function registerLanAuthRoutes(app: express.Express, auth: LanAuth, onLogout?: (sessionId: string) => void): void {
   app.get("/api/auth/session", (request, response) => {
     const token = readCookie(request.headers.cookie, lanSessionCookie);
     response.setHeader("Cache-Control", "no-store");
@@ -28,7 +28,11 @@ export function registerLanAuthRoutes(app: express.Express, auth: LanAuth): void
     return response.json({ authenticated: true });
   });
 
-  app.post("/api/auth/logout", (_request, response) => {
+  app.post("/api/auth/logout", (request, response) => {
+    const token = readCookie(request.headers.cookie, lanSessionCookie);
+    const session = auth.readSession(token);
+    if (session) onLogout?.(session.id);
+
     response.setHeader("Cache-Control", "no-store");
     response.setHeader("Set-Cookie", sessionCookie("", 0));
     return response.json({ ok: true });
