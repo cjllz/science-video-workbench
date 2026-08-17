@@ -3,12 +3,18 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": ">=22.5.0"
+  },
   "scripts": {
     "dev": "concurrently -k \"npm:dev:server\" \"npm:dev:client\"",
     "dev:server": "tsx watch src/server/index.ts",
     "dev:client": "vite --host 127.0.0.1",
-    "build": "tsc --noEmit && vite build",
-    "start": "tsx src/server/index.ts",
+    "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
+    "build:server": "tsc -p tsconfig.server.json",
+    "build:client": "vite build",
+    "build": "npm run clean && npm run build:server && npm run build:client",
+    "start": "node dist/server/index.js",
     "setup:tts": "python -m pip install -r requirements.txt",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -26,7 +32,7 @@
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "read-excel-file": "^9.3.1",
-    "sharp": "^0.34.3",
+    "sharp": "^0.35.3",
     "zod": "^3.25.76"
   },
   "devDependencies": {
