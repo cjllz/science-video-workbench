@@ -32,6 +32,9 @@ export interface ProviderStatus {
 }
 
 export const api = {
+  getSession: () => request<{ authRequired: boolean; authenticated: boolean }>("/api/auth/session"),
+  login: (password: string) => request<{ authenticated: true }>("/api/auth/login", { method: "POST", body: JSON.stringify({ password }) }),
+  logout: () => request<{ ok: true }>("/api/auth/logout", { method: "POST" }),
   listJobs: () => request<VideoJob[]>("/api/jobs"),
   getJob: (id: string) => request<VideoJob>(`/api/jobs/${id}`),
   createJob: (brief: VideoBrief) => request<VideoJob>("/api/jobs", { method: "POST", body: JSON.stringify(brief) }),

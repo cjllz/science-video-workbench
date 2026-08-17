@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import {
   Check, ChevronRight, Clock3, Download, Film, History, LoaderCircle,
-  MessageSquareText, Play, Sparkles, Table2, ThumbsDown, ThumbsUp, Upload, WandSparkles, X
+  LockKeyhole, LogIn, LogOut, MessageSquareText, Play, Sparkles, Table2, ThumbsDown, ThumbsUp, Upload, WandSparkles, X
 } from "lucide-react";
 import { VIDEO_STYLES, type DataAsset, type DataCell, type MaterialAsset, type VideoBrief, type VideoJob } from "../shared/video";
 import { api, type LearningStats, type ProviderStatus } from "./api";
@@ -372,6 +372,10 @@ function FeedbackDialog({ job, onClose, onSaved }: { job: VideoJob; onClose: () 
 }
 
 export function App() {
+  const [authState, setAuthState] = useState<"checking" | "authenticated" | "unauthenticated">("checking");
+  const [authRequired, setAuthRequired] = useState(false);
+  const [password, setPassword] = useState("");
+  const [authBusy, setAuthBusy] = useState(false);
   const [jobs, setJobs] = useState<VideoJob[]>([]);
   const [selected, setSelected] = useState<VideoJob>();
   const [stats, setStats] = useState<LearningStats>({ completed: 0, accepted: 0, averageRating: 0 });
@@ -383,6 +387,17 @@ export function App() {
   const generating = selected && !["complete", "failed", "awaiting_confirmation"].includes(selected.status);
 
   useEffect(() => {
+    api.getSession().then((session) => {
+      setAuthRequired(session.authRequired);
+      setAuthState(session.authenticated ? "authenticated" : "unauthenticated");
+    }).catch((reason) => {
+      setError(reason instanceof Error ? reason.message : "无法连接服务器");
+      setAuthState("unauthenticated");
+    });
+  }, []);
+
+  useEffect(() => {
+    if (authState !== "authenticated") return;
     Promise.all([api.listJobs(), api.getStats(), api.getProvider(), api.listMaterials()]).then(([loadedJobs, loadedStats, loadedProvider, loadedMaterials]) => {
       setJobs(loadedJobs);
       setStats(loadedStats);
@@ -390,10 +405,10 @@ export function App() {
       setMaterials(loadedMaterials);
       if (loadedJobs[0]) setSelected(loadedJobs[0]);
     }).catch((reason) => setError(reason.message));
-  }, []);
+  }, [authState]);
 
   useEffect(() => {
-    if (!selected || ["complete", "failed", "awaiting_confirmation"].includes(selected.status)) return;
+    if (authState !== "authenticated" || !selected || ["complete", "failed", "awaiting_confirmation"].includes(selected.status)) return;
     const timer = window.setInterval(async () => {
       try {
         const updated = await api.getJob(selected.id);
@@ -405,7 +420,33 @@ export function App() {
       }
     }, 1500);
     return () => window.clearInterval(timer);
-  }, [selected?.id, selected?.status]);
+  }, [authState, selected?.id, selected?.status]);
+
+  async function login(event: React.FormEvent) {
+    event.preventDefault();
+    if (!password) return;
+    setAuthBusy(true);
+    setError("");
+    try {
+      await api.login(password);
+      setPassword("");
+      setAuthRequired(true);
+      setAuthState("authenticated");
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "登录失败");
+    } finally {
+      setAuthBusy(false);
+    }
+  }
+
+  async function logout() {
+    await api.logout().catch(() => undefined);
+    setJobs([]);
+    setSelected(undefined);
+    setMaterials([]);
+    setFeedbackOpen(false);
+    setAuthState("unauthenticated");
+  }
 
   async function create(brief: VideoBrief) {
     setError("");
@@ -423,12 +464,44 @@ export function App() {
     setJobs((current) => current.map((item) => item.id === job.id ? job : item));
   }
 
+  if (authState !== "authenticated") {
+    return (
+      <div className="app-shell login-shell">
+        <header className="topbar">
+          <div className="brand-mark"><Sparkles size={19} /></div>
+          <div className="brand-copy"><strong>科普视频工作台</strong><span>局域网协作</span></div>
+        </header>
+        <main className="login-stage">
+          {authState === "checking" ? (
+            <div className="login-loading"><LoaderCircle className="spin" size={24} /><span>正在连接工作台</span></div>
+          ) : (
+            <form className="login-panel" onSubmit={login}>
+              <div className="login-mark"><LockKeyhole size={24} /></div>
+              <h1>局域网访问</h1>
+              <p>输入共享访问口令</p>
+              <label className="field">
+                <span>访问口令</span>
+                <input autoFocus type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" />
+              </label>
+              {error && <p className="form-error">{error}</p>}
+              <button className="primary-action" type="submit" disabled={authBusy || !password}>
+                {authBusy ? <LoaderCircle className="spin" size={18} /> : <LogIn size={18} />}
+                {authBusy ? "正在进入" : "进入工作台"}
+              </button>
+            </form>
+          )}
+        </main>
+      </div>
+    );
+  }
+
   return (
     <div className="app-shell">
       <header className="topbar">
         <div className="brand-mark"><Sparkles size={19} /></div>
         <div className="brand-copy"><strong>科普视频工作台</strong><span>自动生成 · 经验沉淀</span></div>
         <div className={`system-status ${provider.connected ? "connected" : ""}`}><i /> {providerLabel(provider)}</div>
+        {authRequired && <button className="topbar-icon-button" type="button" title="退出局域网会话" aria-label="退出局域网会话" onClick={logout}><LogOut size={17} /></button>}
       </header>
       {error && <div className="global-error">{error}<button onClick={() => setError("")}>关闭</button></div>}
       <main className="workspace">

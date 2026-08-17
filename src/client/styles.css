@@ -27,8 +27,18 @@ button { cursor: pointer; }
 .brand-copy span { color: var(--muted); font-size: 11px; margin-top: 3px; }
 .system-status { margin-left: auto; display: flex; align-items: center; gap: 7px; color: var(--muted); font-size: 12px; }
 .system-status i { width: 8px; height: 8px; border-radius: 50%; background: #46a477; box-shadow: 0 0 0 3px rgba(70,164,119,.13); }
+.topbar-icon-button { width: 34px; height: 34px; margin-left: 12px; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 5px; background: transparent; color: var(--muted); }
+.topbar-icon-button:hover { color: var(--ink); background: #fff; }
 .global-error { padding: 10px 24px; background: #fff1ee; color: #9a342c; border-bottom: 1px solid #efc5bf; display: flex; justify-content: space-between; font-size: 13px; }
 .global-error button { border: 0; background: none; color: inherit; }
+
+.login-stage { min-height: calc(100vh - 66px); display: grid; place-items: center; padding: 24px; }
+.login-panel { width: min(100%, 360px); padding: 30px; border: 1px solid var(--line); border-radius: 6px; background: rgba(255,255,252,.96); box-shadow: 0 16px 42px rgba(29,37,36,.12); }
+.login-mark { width: 48px; height: 48px; display: grid; place-items: center; border-radius: 5px; background: var(--ink); color: var(--paper); }
+.login-panel h1 { margin: 20px 0 6px; font-family: "STKaiti", "KaiTi", serif; font-size: 28px; letter-spacing: 0; }
+.login-panel > p:not(.form-error) { margin: 0 0 24px; color: var(--muted); font-size: 13px; }
+.login-panel .form-error { margin: -6px 0 14px; }
+.login-loading { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 13px; }
 
 .workspace { min-height: calc(100vh - 66px); display: grid; grid-template-columns: minmax(330px, 390px) minmax(480px, 1fr) minmax(260px, 310px); max-width: 1700px; margin: 0 auto; }
 .workspace:has(.script-workspace) { grid-template-columns: minmax(300px, 330px) minmax(680px, 1fr) minmax(220px, 250px); }
