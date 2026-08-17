@@ -243,17 +243,27 @@ interface JobPreviewProps {
   onJobUpdated: (job: VideoJob) => void;
   onError: (message: string) => void;
   onFeedback: () => void;
+  onRetry: () => Promise<void>;
 }
 
-function JobPreview({ job, materials, onMaterialAdded, onMaterialRenamed, onJobUpdated, onError, onFeedback }: JobPreviewProps) {
+function JobPreview({ job, materials, onMaterialAdded, onMaterialRenamed, onJobUpdated, onError, onFeedback, onRetry }: JobPreviewProps) {
   const finished = job.status === "complete";
   const failed = job.status === "failed";
   const videoRef = useRef<HTMLVideoElement>(null);
+  const [retrying, setRetrying] = useState(false);
 
   function seekVideo(seconds: number) {
     if (!videoRef.current) return;
     videoRef.current.currentTime = seconds;
     void videoRef.current.play().catch(() => undefined);
+  }
+  async function retry() {
+    setRetrying(true);
+    try {
+      await onRetry();
+    } finally {
+      setRetrying(false);
+    }
   }
   return (
     <div className="job-preview">
@@ -274,7 +284,7 @@ function JobPreview({ job, materials, onMaterialAdded, onMaterialRenamed, onJobU
         </div>
       )}
 
-      {failed && <div className="failure-box"><strong>本次生成没有完成</strong><p>{job.error}</p></div>}
+      {failed && <div className="failure-box"><strong>本次生成没有完成</strong><p>{job.error}</p><button className="secondary-action" type="button" disabled={retrying} onClick={retry}>{retrying ? <LoaderCircle className="spin" size={16} /> : <Play size={16} />}重新提交</button></div>}
 
       {job.outputUrl && (
         <>
@@ -464,6 +474,16 @@ export function App() {
     setJobs((current) => current.map((item) => item.id === job.id ? job : item));
   }
 
+  async function retryJob() {
+    if (!selected) return;
+    setError("");
+    try {
+      updateJob(await api.retryJob(selected.id));
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "重新提交失败");
+    }
+  }
+
   if (authState !== "authenticated") {
     return (
       <div className="app-shell login-shell">
@@ -506,7 +526,7 @@ export function App() {
       {error && <div className="global-error">{error}<button onClick={() => setError("")}>关闭</button></div>}
       <main className="workspace">
         <section className="brief-panel"><BriefForm disabled={Boolean(generating)} provider={provider} onCreate={create} /></section>
-        <section className="preview-panel">{selected ? <JobPreview job={selected} materials={materials} onMaterialAdded={(material) => setMaterials((current) => [material, ...current])} onMaterialRenamed={(material) => setMaterials((current) => current.map((item) => item.id === material.id ? material : item))} onJobUpdated={updateJob} onError={setError} onFeedback={() => setFeedbackOpen(true)} /> : <EmptyPreview />}</section>
+        <section className="preview-panel">{selected ? <JobPreview job={selected} materials={materials} onMaterialAdded={(material) => setMaterials((current) => [material, ...current])} onMaterialRenamed={(material) => setMaterials((current) => current.map((item) => item.id === material.id ? material : item))} onJobUpdated={updateJob} onError={setError} onFeedback={() => setFeedbackOpen(true)} onRetry={retryJob} /> : <EmptyPreview />}</section>
         <HistoryPanel jobs={jobs} selectedId={selected?.id} stats={stats} onSelect={setSelected} />
       </main>
       {feedbackOpen && selected && <FeedbackDialog job={selected} onClose={() => setFeedbackOpen(false)} onSaved={(nextStats) => { setStats(nextStats); setFeedbackOpen(false); }} />}

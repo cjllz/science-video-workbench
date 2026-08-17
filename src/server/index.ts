@@ -11,9 +11,10 @@ import { registerLanAuthRoutes, requireLanAuth } from "./auth-http.js";
 import { parseDataAsset } from "./data-assets.js";
 import { addFeedback, createDataAsset, createJob, getDataAssets, getJob, getJobRevision, getLearningStats, getMaterialAssets, listJobRevisions, listJobs, listMaterialAssets, recordEvent, updateJob, updateMaterialVariable } from "./db.js";
 import { assertPlanEditable, assertRenderable } from "./job-lifecycle.js";
+import { markInterruptedJobsFailed, retryPhase } from "./job-recovery.js";
 import { classifyMaterial, storeMaterialUpload } from "./materials.js";
 import { materialRoot, outputRoot, projectRoot } from "./paths.js";
-import { enqueuePlanning, enqueueRendering, enqueueRetouch } from "./pipeline.js";
+import { enqueuePlanning, enqueueRendering, enqueueRetouch, enqueueRetry } from "./pipeline.js";
 import { inspectPlanForRender } from "./preflight.js";
 import { getVideoProviderStatus } from "./providers/video.js";
 import { loadProviderAssetManifest, selectReferenceVideoUrl } from "./provider-assets.js";
@@ -188,6 +189,25 @@ app.get("/api/jobs/:id", (request, response) => {
   return response.json(job);
 });
 
+app.post("/api/jobs/:id/retry", (request, response) => {
+  const job = getJob(request.params.id);
+  if (!job) return response.status(404).json({ message: "任务不存在" });
+  let phase: ReturnType<typeof retryPhase>;
+  try {
+    phase = retryPhase(job);
+  } catch (error) {
+    return response.status(409).json({ message: error instanceof Error ? error.message : "当前任务不可重试" });
+  }
+  const queued = updateJob(job.id, {
+    status: "queued",
+    progress: 0,
+    currentStage: phase === "rendering" ? "等待重新生成" : "等待重新规划",
+    error: undefined
+  });
+  enqueueRetry(job.id);
+  return response.status(202).json(queued);
+});
+
 app.post("/api/jobs", (request, response) => {
   const parsed = briefSchema.safeParse(request.body);
   if (!parsed.success) return response.status(400).json({ message: "输入信息不完整", issues: parsed.error.issues });
@@ -323,7 +343,10 @@ app.use((error: unknown, _request: express.Request, response: express.Response, 
   return response.status(500).json({ message: "服务器处理失败" });
 });
 
+const interruptedJobCount = markInterruptedJobsFailed();
+
 app.listen(port, host, () => {
   console.log(`Science video API listening on http://${host}:${port}`);
+  if (interruptedJobCount) console.warn(`Marked ${interruptedJobCount} interrupted job(s) as failed after restart`);
   if (!lanAuth.enabled) console.warn("LAN_ACCESS_TOKEN is not configured; LAN authentication is disabled");
 });

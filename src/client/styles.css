@@ -126,6 +126,7 @@ button { cursor: pointer; }
 .processing-line { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 11px; margin-top: 12px; }
 .failure-box { margin: 28px 0; border-left: 4px solid var(--red); background: #fff1ee; padding: 16px; }
 .failure-box p { color: #7a423d; font-size: 12px; margin-bottom: 0; word-break: break-word; }
+.failure-box .secondary-action { width: auto; min-height: 36px; margin-top: 14px; padding: 0 12px; }
 .video-shell { margin: 28px auto 18px; background: #111; overflow: hidden; border-radius: 6px; box-shadow: 0 18px 45px rgba(30,37,36,.18); }
 .video-shell.portrait { width: min(100%, 340px); aspect-ratio: 9/16; }
 .video-shell.portrait-short { width: min(100%, 420px); aspect-ratio: 3/4; }

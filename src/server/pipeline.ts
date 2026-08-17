@@ -52,6 +52,13 @@ export function enqueueRetouch(jobId: string, shotId: string, visualAction: Reto
 
 export const enqueueJob = enqueuePlanning;
 
+export function enqueueRetry(jobId: string): void {
+  const job = getJob(jobId);
+  if (!job) return;
+  if (job.plan) enqueueRendering(jobId);
+  else enqueuePlanning(jobId);
+}
+
 async function processPlanning(jobId: string): Promise<void> {
   const job = getJob(jobId);
   if (!job) return;
@@ -68,7 +75,6 @@ async function processPlanning(jobId: string): Promise<void> {
     updateJob(jobId, { status: "failed", currentStage: "剧本生成失败", error: error instanceof Error ? error.message : String(error) });
   }
 }
-
 async function processRendering(jobId: string): Promise<void> {
   const job = getJob(jobId);
   if (!job?.plan) return;
@@ -210,6 +216,3 @@ async function processRetouch(jobId: string, shotId: string, visualAction: Retou
   }
 }
 
-export function resumeInterruptedJobs(): void {
-  // Jobs are intentionally not auto-resumed yet; retry behavior will be added with persistent queueing.
-}

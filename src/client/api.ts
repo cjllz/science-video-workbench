@@ -37,6 +37,7 @@ export const api = {
   logout: () => request<{ ok: true }>("/api/auth/logout", { method: "POST" }),
   listJobs: () => request<VideoJob[]>("/api/jobs"),
   getJob: (id: string) => request<VideoJob>(`/api/jobs/${id}`),
+  retryJob: (id: string) => request<VideoJob>(`/api/jobs/${id}/retry`, { method: "POST" }),
   createJob: (brief: VideoBrief) => request<VideoJob>("/api/jobs", { method: "POST", body: JSON.stringify(brief) }),
   savePlan: (id: string, plan: VideoPlan) => request<VideoJob>(`/api/jobs/${id}/plan`, { method: "PATCH", body: JSON.stringify(plan) }),
   renderJob: (id: string) => request<VideoJob>(`/api/jobs/${id}/render`, { method: "POST" }),
