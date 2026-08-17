@@ -1,0 +1,44 @@
+import type express from "express";
+import { lanSessionCookie, readCookie, type LanAuth } from "./auth.js";
+
+function sessionCookie(value: string, maxAge: number, secure = false): string {
+  return [
+    `${lanSessionCookie}=${value}`,
+    "HttpOnly",
+    "SameSite=Lax",
+    "Path=/",
+    `Max-Age=${maxAge}`,
+    ...(secure ? ["Secure"] : [])
+  ].join("; ");
+}
+
+export function registerLanAuthRoutes(app: express.Express, auth: LanAuth): void {
+  app.get("/api/auth/session", (request, response) => {
+    const token = readCookie(request.headers.cookie, lanSessionCookie);
+    response.setHeader("Cache-Control", "no-store");
+    return response.json({ authRequired: auth.enabled, authenticated: auth.validateSession(token) });
+  });
+
+  app.post("/api/auth/login", (request, response) => {
+    const password = typeof request.body?.password === "string" ? request.body.password : "";
+    if (!auth.authenticate(password)) return response.status(401).json({ message: "访问口令不正确" });
+
+    response.setHeader("Cache-Control", "no-store");
+    response.setHeader("Set-Cookie", sessionCookie(auth.createSession(), auth.lifetimeSeconds, request.secure));
+    return response.json({ authenticated: true });
+  });
+
+  app.post("/api/auth/logout", (_request, response) => {
+    response.setHeader("Cache-Control", "no-store");
+    response.setHeader("Set-Cookie", sessionCookie("", 0));
+    return response.json({ ok: true });
+  });
+}
+
+export function requireLanAuth(auth: LanAuth): express.RequestHandler {
+  return (request, response, next) => {
+    const token = readCookie(request.headers.cookie, lanSessionCookie);
+    if (auth.validateSession(token)) return next();
+    return response.status(401).json({ message: "请输入局域网访问口令" });
+  };
+}

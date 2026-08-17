@@ -6,6 +6,8 @@ import multer from "multer";
 import { nanoid } from "nanoid";
 import { z } from "zod";
 import { VIDEO_STYLES, type ShotRetouchInput, type VideoJob, type VideoPlan } from "../shared/video.js";
+import { createLanAuth } from "./auth.js";
+import { registerLanAuthRoutes, requireLanAuth } from "./auth-http.js";
 import { parseDataAsset } from "./data-assets.js";
 import { addFeedback, createDataAsset, createJob, getDataAssets, getJob, getJobRevision, getLearningStats, getMaterialAssets, listJobRevisions, listJobs, listMaterialAssets, recordEvent, updateJob, updateMaterialVariable } from "./db.js";
 import { assertPlanEditable, assertRenderable } from "./job-lifecycle.js";
@@ -29,6 +31,7 @@ try {
 const app = express();
 const port = Number(process.env.PORT || 8787);
 const host = process.env.HOST || "0.0.0.0";
+const lanAuth = createLanAuth(process.env.LAN_ACCESS_TOKEN);
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 10 * 1024 * 1024, files: 1 },
@@ -63,8 +66,11 @@ fs.mkdirSync(outputRoot, { recursive: true });
 fs.mkdirSync(materialRoot, { recursive: true });
 
 app.use(express.json({ limit: "1mb" }));
-app.use("/outputs", express.static(outputRoot, { maxAge: "1h", fallthrough: false }));
-app.use("/materials", express.static(materialRoot, { maxAge: "1h", fallthrough: false }));
+app.get("/api/health", (_request, response) => response.json({ ok: true }));
+registerLanAuthRoutes(app, lanAuth);
+app.use("/api", requireLanAuth(lanAuth));
+app.use("/outputs", requireLanAuth(lanAuth), express.static(outputRoot, { maxAge: "1h", fallthrough: false }));
+app.use("/materials", requireLanAuth(lanAuth), express.static(materialRoot, { maxAge: "1h", fallthrough: false }));
 
 const briefSchema = z.object({
   topic: z.string().trim().min(2).max(80),
@@ -133,7 +139,6 @@ const feedbackSchema = z.object({
   notes: z.string().trim().max(1000).optional()
 });
 
-app.get("/api/health", (_request, response) => response.json({ ok: true }));
 app.get("/api/styles", (_request, response) => response.json(VIDEO_STYLES));
 app.get("/api/stats", (_request, response) => response.json(getLearningStats()));
 app.get("/api/provider", (_request, response) => response.json({ ...getVideoProviderStatus(), planner: getPlannerStatus() }));
@@ -320,4 +325,5 @@ app.use((error: unknown, _request: express.Request, response: express.Response, 
 
 app.listen(port, host, () => {
   console.log(`Science video API listening on http://${host}:${port}`);
+  if (!lanAuth.enabled) console.warn("LAN_ACCESS_TOKEN is not configured; LAN authentication is disabled");
 });
