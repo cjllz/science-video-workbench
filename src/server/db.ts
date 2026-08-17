@@ -6,8 +6,18 @@ import { dataRoot, databasePath } from "./paths.js";
 fs.mkdirSync(dataRoot, { recursive: true });
 
 const db = new DatabaseSync(databasePath);
-db.exec(`
-  PRAGMA busy_timeout = 5000;
+const initializationTimeoutMs = 5_000;
+const sqliteBusyErrorCode = 5;
+const retryWait = new Int32Array(new SharedArrayBuffer(4));
+
+const initializationDeadline = Date.now() + initializationTimeoutMs;
+// SQLite can skip its busy handler to avoid lock-promotion deadlocks, so retry this idempotent batch.
+while (true) {
+  const remainingTime = initializationDeadline - Date.now();
+  if (remainingTime <= 0) throw new Error("Timed out initializing the database");
+  db.exec(`PRAGMA busy_timeout = ${remainingTime};`);
+  try {
+    db.exec(`
   PRAGMA journal_mode = WAL;
   CREATE TABLE IF NOT EXISTS jobs (
     id TEXT PRIMARY KEY,
@@ -66,6 +76,18 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_material_assets_created_at ON material_assets(created_at DESC);
   CREATE INDEX IF NOT EXISTS idx_job_revisions_job_id ON job_revisions(job_id, created_at DESC);
 `);
+    break;
+  } catch (error) {
+    const sqliteErrorCode = typeof error === "object" && error !== null && "errcode" in error
+      ? error.errcode
+      : undefined;
+    if (sqliteErrorCode !== sqliteBusyErrorCode) throw error;
+    const retryDelay = Math.min(10 + (process.pid % 20), initializationDeadline - Date.now());
+    if (retryDelay <= 0) throw error;
+    Atomics.wait(retryWait, 0, 0, retryDelay);
+    if (Date.now() >= initializationDeadline) throw error;
+  }
+}
 
 type JobRow = {
   id: string;
