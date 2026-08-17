@@ -7,6 +7,7 @@ fs.mkdirSync(dataRoot, { recursive: true });
 
 const db = new DatabaseSync(databasePath);
 db.exec(`
+  PRAGMA busy_timeout = 5000;
   PRAGMA journal_mode = WAL;
   CREATE TABLE IF NOT EXISTS jobs (
     id TEXT PRIMARY KEY,
