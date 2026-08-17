@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { DataAsset, MaterialAsset, RetouchVisualAction, VideoJob, VideoPlan } from "../shared/video.js";
+import { createConcurrencyGate } from "./concurrency-gate.js";
 import { findExperience, getDataAssets, getJob, getMaterialAssets, recordEvent, updateJob } from "./db.js";
 import { outputRoot } from "./paths.js";
 import { createPlan } from "./planner.js";
@@ -12,6 +13,7 @@ import { selectGeneratedShotIndices } from "./shot-policy.js";
 import { loadCachedGeneratedAssets } from "./revisions.js";
 
 const running = new Set<string>();
+const renderConcurrency = createConcurrencyGate(Number(process.env.MAX_CONCURRENT_RENDERS || 1));
 
 function publicPath(jobId: string, filename: string): string {
   return `/outputs/${jobId}/${filename}`;
@@ -38,14 +40,14 @@ export function enqueueRendering(jobId: string): void {
   const key = `rendering:${jobId}`;
   if (running.has(key)) return;
   running.add(key);
-  void processRendering(jobId).finally(() => running.delete(key));
+  void renderConcurrency.run(() => processRendering(jobId)).finally(() => running.delete(key));
 }
 
 export function enqueueRetouch(jobId: string, shotId: string, visualAction: RetouchVisualAction): void {
   const key = `retouch:${jobId}`;
   if (running.has(key)) return;
   running.add(key);
-  void processRetouch(jobId, shotId, visualAction).finally(() => running.delete(key));
+  void renderConcurrency.run(() => processRetouch(jobId, shotId, visualAction)).finally(() => running.delete(key));
 }
 
 export const enqueueJob = enqueuePlanning;
