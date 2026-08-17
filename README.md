@@ -4,7 +4,7 @@ This repository contains a runnable science-video generation MVP. It accepts a t
 
 ## Start
 
-Requirements: Node.js 20 or newer and Python 3.10 or newer.
+Requirements: Node.js 22.5 or newer and Python 3.10 or newer.
 
 ```powershell
 npm install
@@ -21,7 +21,18 @@ npm run build
 npm start
 ```
 
-Open `http://127.0.0.1:8787` locally. With the default `HOST=0.0.0.0`, other devices on the same LAN can open `http://<computer-lan-ip>:8787`.
+Set a shared LAN password before starting the service:
+
+```powershell
+$env:LAN_ACCESS_TOKEN = "replace-with-a-long-random-password"
+$env:MAX_CONCURRENT_RENDERS = "1"
+npm run build
+npm start
+```
+
+Open `http://127.0.0.1:8787` locally. With the default `HOST=0.0.0.0`, trusted devices on the same LAN can open `http://<computer-lan-ip>:8787` and enter the shared password. Keep the port limited to the Windows Firewall Private network profile; do not configure router port forwarding. The application uses a local SQLite database and `data/` directory, so production deployments need a persistent local disk and one active server process.
+
+For loopback-only development, set `HOST=127.0.0.1` and leave `LAN_ACCESS_TOKEN` empty. Do not leave authentication disabled when sharing the service on a LAN.
 
 ## Workflow
 
@@ -50,6 +61,8 @@ Ark result URLs are recorded for 23 hours after generation so a new shot can be 
 ## Configuration
 
 `HOST` controls the server listen address and defaults to `0.0.0.0` for LAN access. Set it to `127.0.0.1` to restrict the workbench to this computer.
+
+`LAN_ACCESS_TOKEN` enables the shared-password LAN login. It is stored only in the server environment; the browser receives a short-lived HttpOnly session cookie. `MAX_CONCURRENT_RENDERS` limits simultaneous provider, TTS, ffmpeg, and retouch work and defaults to `1`.
 
 The planner supports an OpenAI-compatible `chat/completions` endpoint through `OPENAI_API_KEY`, `OPENAI_BASE_URL`, and `OPENAI_MODEL`.
 
