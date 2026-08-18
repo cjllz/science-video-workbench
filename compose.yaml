@@ -28,6 +28,7 @@ services:
       ARK_MAX_GENERATED_SHOTS: ${ARK_MAX_GENERATED_SHOTS:-3}
       MATERIAL_PUBLIC_BASE_URL: ${MATERIAL_PUBLIC_BASE_URL:-}
       OUTPUT_PUBLIC_BASE_URL: ${OUTPUT_PUBLIC_BASE_URL:-}
+      PERSONAL_API_ALLOWED_HOSTS: ${PERSONAL_API_ALLOWED_HOSTS:-}
     volumes:
       - type: bind
         source: ${DATA_DIR:?DATA_DIR must be set}
@@ -63,8 +64,8 @@ services:
     environment:
       LAN_HOST: ${LAN_HOST:?LAN_HOST must be set}
     ports:
-      - "${HTTP_PORT:-80}:80"
-      - "${HTTPS_PORT:-443}:443"
+      - "${LAN_BIND_ADDRESS:?LAN_BIND_ADDRESS must be set}:${HTTP_PORT:-80}:80"
+      - "${LAN_BIND_ADDRESS:?LAN_BIND_ADDRESS must be set}:${HTTPS_PORT:-443}:443"
     volumes:
       - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data

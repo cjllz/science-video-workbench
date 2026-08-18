@@ -50,6 +50,37 @@ assert_not_nested_in_data() {
   fi
 }
 
+require_data_layout() {
+  local label="$1"
+  local directory="$2"
+  local sentinel=""
+  if [[ -f "$directory/.science-video-workbench-data" ]]; then
+    sentinel="$(tr -d '\r\n' <"$directory/.science-video-workbench-data")"
+  fi
+  [[ "$sentinel" == "science-video-workbench-data-v1" ]] || die "$label is missing the required data sentinel"
+  [[ -f "$directory/studio.sqlite" ]] || die "$label is missing studio.sqlite"
+  [[ -d "$directory/outputs" && -d "$directory/materials" ]] || die "$label has an incomplete directory layout"
+}
+
+assert_data_owner() {
+  local directory="$1"
+  local owner
+  owner="$(stat -c '%u:%g' "$directory")"
+  [[ "$owner" == "10001:10001" ]] || die "unsafe DATA_DIR ownership: expected 10001:10001"
+}
+
+assert_compose_data_bind() {
+  local expected="$1"
+  local container_id
+  container_id="$(compose_cmd ps -q app)"
+  [[ -n "$container_id" ]] || die "app container is not running"
+  local mounted
+  mounted="$(docker inspect --format '{{range .Mounts}}{{if eq .Destination "/app/data"}}{{.Source}}{{end}}{{end}}' "$container_id")"
+  [[ -n "$mounted" ]] || die "app container has no /app/data bind mount"
+  mounted="$(realpath -m -- "$mounted")"
+  [[ "$mounted" == "$expected" ]] || die "unsafe DATA_DIR: configured path does not match the running app bind mount"
+}
+
 compose_cmd() {
   (
     cd -- "$PROJECT_ROOT"

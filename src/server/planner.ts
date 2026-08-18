@@ -4,6 +4,7 @@ import type { DataAsset, ShotPlan, VideoBrief, VideoPlan } from "../shared/video
 import { VIDEO_STYLES } from "../shared/video.js";
 import type { ExperienceMatch } from "./db.js";
 import type { PlannerConfig } from "./provider-settings.js";
+import { assertPublicPersonalProviderUrl } from "./provider-url-policy.js";
 
 const sentenceEnd = /(?<=[。！？!?；;])/;
 const llmPlanSchema = z.object({
@@ -141,6 +142,7 @@ async function planWithLlm(
   config?: PlannerConfig
 ): Promise<VideoPlan | undefined> {
   if (!config) return undefined;
+  if (config.personalBaseUrl) await assertPublicPersonalProviderUrl(config.baseUrl);
   const style = VIDEO_STYLES.find((item) => item.id === brief.style);
   const shotCount = Math.min(10, Math.max(5, Math.round(brief.duration / 6)));
   const response = await fetch(`${config.baseUrl}/chat/completions`, {
@@ -173,6 +175,7 @@ async function planWithLlm(
         }
       ]
     }),
+    redirect: "error",
     signal: AbortSignal.timeout(120_000)
   });
   if (!response.ok) throw new Error(`LLM request failed: ${response.status} ${(await response.text()).slice(0, 500)}`);

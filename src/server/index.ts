@@ -8,7 +8,7 @@ import { nanoid } from "nanoid";
 import { z } from "zod";
 import { VIDEO_STYLES, type ShotRetouchInput, type VideoJob, type VideoPlan } from "../shared/video.js";
 import { createLanAuth } from "./auth.js";
-import { registerLanAuthRoutes, requireLanAuth } from "./auth-http.js";
+import { registerLanAuthRoutes, requireLanAuth, requireTrustedMutation } from "./auth-http.js";
 import { parseDataAsset } from "./data-assets.js";
 import { addFeedback, checkDatabase, closeDatabase, createDataAsset, createJob, getDataAssets, getJob, getJobRevision, getLearningStats, getMaterialAssets, listJobRevisions, listJobs, listMaterialAssets, recordEvent, updateJob, updateMaterialVariable } from "./db.js";
 import { assertPlanEditable, assertRenderable } from "./job-lifecycle.js";
@@ -95,6 +95,7 @@ app.get("/api/ready", async (_request, response) => {
   const result = await readiness.inspect();
   return response.status(result.ok ? 200 : 503).json(result);
 });
+app.use("/api", requireTrustedMutation);
 registerLanAuthRoutes(app, lanAuth, providerSettings.clear);
 app.use("/api", requireLanAuth(lanAuth));
 app.use("/api", (request, response, next) => {

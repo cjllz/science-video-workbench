@@ -2,9 +2,14 @@ import type { DataAsset, FeedbackInput, MaterialAsset, ShotRetouchInput, VideoBr
 import type { ProviderSettingsInput, ProviderSettingsView } from "../shared/provider-settings";
 
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
+  const method = (options?.method ?? "GET").toUpperCase();
   const response = await fetch(url, {
     ...options,
-    headers: { "Content-Type": "application/json", ...(options?.headers ?? {}) }
+    headers: {
+      "Content-Type": "application/json",
+      ...(["GET", "HEAD", "OPTIONS"].includes(method) ? {} : { "X-Science-Video-Request": "1" }),
+      ...(options?.headers ?? {})
+    }
   });
   if (!response.ok) {
     const body = await response.json().catch(() => ({ message: "请求失败" })) as { message?: string; issues?: Array<{ message?: string }> };
@@ -61,7 +66,11 @@ export const api = {
   uploadDataAsset: async (file: File): Promise<DataAsset> => {
     const form = new FormData();
     form.append("file", file);
-    const response = await fetch("/api/uploads", { method: "POST", body: form });
+    const response = await fetch("/api/uploads", {
+      method: "POST",
+      headers: { "X-Science-Video-Request": "1" },
+      body: form
+    });
     if (!response.ok) {
       const body = await response.json().catch(() => ({ message: "数据上传失败" })) as { message?: string };
       throw new Error(body.message || "数据上传失败");
@@ -73,7 +82,11 @@ export const api = {
 async function uploadFile<T>(url: string, file: File, fallback: string): Promise<T> {
   const form = new FormData();
   form.append("file", file);
-  const response = await fetch(url, { method: "POST", body: form });
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "X-Science-Video-Request": "1" },
+    body: form
+  });
   if (!response.ok) {
     const body = await response.json().catch(() => ({ message: fallback })) as { message?: string };
     throw new Error(body.message || fallback);

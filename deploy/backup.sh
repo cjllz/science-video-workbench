@@ -10,6 +10,8 @@ data_dir="$(resolve_safe_directory DATA_DIR "${DATA_DIR:-}")"
 backup_dir="$(resolve_safe_directory BACKUP_DIR "${BACKUP_DIR:-}")"
 assert_not_nested_in_data BACKUP_DIR "$backup_dir" "$data_dir"
 [[ -d "$data_dir" ]] || die "DATA_DIR does not exist"
+require_data_layout DATA_DIR "$data_dir"
+assert_data_owner "$data_dir"
 mkdir -p -- "$backup_dir"
 
 retention_days="${BACKUP_RETENTION_DAYS:-14}"
@@ -19,6 +21,7 @@ retention_days="${BACKUP_RETENTION_DAYS:-14}"
 for command_name in docker flock tar sha256sum stat uname; do
   require_command "$command_name"
 done
+assert_compose_data_bind "$data_dir"
 
 exec 9>"$backup_dir/.backup.lock"
 flock -n 9 || die "another backup or restore is already running"

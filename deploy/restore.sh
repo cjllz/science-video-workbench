@@ -15,6 +15,8 @@ load_deployment_environment
 data_dir="$(resolve_safe_directory DATA_DIR "${DATA_DIR:-}")"
 backup_dir="$(resolve_safe_directory BACKUP_DIR "${BACKUP_DIR:-}")"
 assert_not_nested_in_data BACKUP_DIR "$backup_dir" "$data_dir"
+require_data_layout DATA_DIR "$data_dir"
+assert_data_owner "$data_dir"
 archive_path="$(realpath -e -- "$1")" || die "restore archive does not exist"
 [[ -f "$archive_path" && "$archive_path" == *.tar.gz ]] || die "restore archive must be a .tar.gz file"
 assert_not_nested_in_data RESTORE_ARCHIVE "$archive_path" "$data_dir"
@@ -24,6 +26,7 @@ checksum_path="$archive_path.sha256"
 for command_name in docker flock tar sha256sum realpath chown; do
   require_command "$command_name"
 done
+assert_compose_data_bind "$data_dir"
 
 mkdir -p -- "$backup_dir"
 exec 9>"$backup_dir/.backup.lock"
@@ -95,14 +98,15 @@ mv -- "$safety_partial" "$safety_archive"
 
 candidate_dir="$(mktemp -d "$data_parent/.restore-candidate.XXXXXX")"
 tar -xzf "$archive_path" -C "$candidate_dir"
+require_data_layout RESTORE_ARCHIVE "$candidate_dir"
 chown -R 10001:10001 "$candidate_dir"
 
 app_image="$(compose_cmd images -q app | head -n 1)"
 [[ -n "$app_image" ]] || die "app image is unavailable for restore validation"
 docker run --rm --network none --read-only --tmpfs /tmp:rw,noexec,nosuid,size=256m \
   --security-opt no-new-privileges:true --user 10001:10001 \
-  --volume "$candidate_dir:/app/data" \
-  "$app_image" npm run maintenance -- validate-data
+  --volume "$candidate_dir:/app/data:ro" --entrypoint node \
+  "$app_image" dist/server/maintenance-cli.js validate-data
 
 rollback_dir="$data_parent/.restore-rollback-$timestamp"
 [[ ! -e "$rollback_dir" ]] || die "rollback directory already exists"

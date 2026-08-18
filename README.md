@@ -4,7 +4,7 @@ This repository contains a runnable science-video generation MVP. It accepts a t
 
 ## Start
 
-Requirements: Node.js 22.5 or newer and Python 3.10 or newer.
+Requirements: Node.js 22.12 or newer and Python 3.10 or newer.
 
 ```powershell
 npm install
@@ -21,23 +21,11 @@ npm run build
 npm start
 ```
 
-For a formal single-server LAN deployment, use the Docker Compose stack with Caddy internal HTTPS, persistent storage, guarded backup/restore scripts, readiness checks, and graceful shutdown. Follow the canonical Chinese runbook: [Linux + Docker Compose deployment](docs/deployment/linux-docker.md).
+For every multi-user LAN deployment, use the Docker Compose stack with Caddy internal HTTPS, persistent storage, guarded backup/restore scripts, readiness checks, and graceful shutdown. Follow the canonical Chinese runbook: [Linux + Docker Compose deployment](docs/deployment/linux-docker.md).
 
 The supported production topology is exactly one application container and one Caddy container on one Linux host. Do not run multiple application replicas against the SQLite data directory and do not publish the service through router port forwarding.
 
-Set a shared LAN password before starting the service:
-
-```powershell
-$env:LAN_ACCESS_TOKEN = "replace-with-a-long-random-password"
-$env:MAX_CONCURRENT_RENDERS = "1"
-$env:HOST = "0.0.0.0"
-npm run build
-npm start
-```
-
-Open `http://127.0.0.1:8787` locally. When `HOST=0.0.0.0` is explicitly set, trusted devices on the same LAN can open `http://<computer-lan-ip>:8787` and enter the shared password. Keep the port limited to the Windows Firewall Private network profile; do not configure router port forwarding. The application uses a local SQLite database and `data/` directory, so production deployments need a persistent local disk and one active server process.
-
-For loopback-only development, set `HOST=127.0.0.1` and leave `LAN_ACCESS_TOKEN` empty. Do not leave authentication disabled when sharing the service on a LAN.
+Open `http://127.0.0.1:8787` only for local development. Do not use the direct HTTP server for LAN sharing or enter personal API keys over HTTP. Local development defaults to `HOST=127.0.0.1` and does not require `LAN_ACCESS_TOKEN`.
 
 ## Workflow
 

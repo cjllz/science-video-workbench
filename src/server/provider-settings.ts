@@ -21,6 +21,7 @@ export interface PlannerConfig {
   model: string;
   supportsJsonMode: boolean;
   disableThinking: boolean;
+  personalBaseUrl?: true;
 }
 
 export type VideoProviderConfig =
@@ -188,7 +189,8 @@ function sessionPlanner(settings: StoredScriptSettings): PlannerConfig {
   return {
     ...settings,
     supportsJsonMode: settings.provider !== "ark",
-    disableThinking: settings.provider === "ark"
+    disableThinking: settings.provider === "ark",
+    ...(settings.provider === "ark" ? {} : { personalBaseUrl: true as const })
   };
 }
 

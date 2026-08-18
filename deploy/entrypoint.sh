@@ -8,6 +8,12 @@ for writable_path in /app/data /tmp; do
   fi
 done
 
+sentinel="$(tr -d '\r\n' </app/data/.science-video-workbench-data 2>/dev/null || true)"
+if [[ "$sentinel" != "science-video-workbench-data-v1" ]]; then
+  echo "startup error: /app/data is missing the required data sentinel" >&2
+  exit 1
+fi
+
 mkdir -p /app/data/outputs /app/data/materials
 
 app_version="$(node -p "require('/app/package.json').version")"

@@ -3,7 +3,7 @@ import type { AddressInfo } from "node:net";
 import express from "express";
 import { describe, expect, it } from "vitest";
 import { createLanAuth, lanSessionCookie, readCookie, type LanAuth } from "./auth.js";
-import { registerLanAuthRoutes, requireLanAuth } from "./auth-http.js";
+import { mutationRequestHeader, registerLanAuthRoutes, requireLanAuth, requireTrustedMutation } from "./auth-http.js";
 
 async function withServer<T>(
   secret: string | undefined,
@@ -14,6 +14,7 @@ async function withServer<T>(
   const auth = createLanAuth(secret, 60);
   app.use(express.json());
   app.get("/api/health", (_request, response) => response.json({ ok: true }));
+  app.use("/api", requireTrustedMutation);
   registerLanAuthRoutes(app, auth, onLogout);
   app.use("/api", requireLanAuth(auth));
   app.get("/api/private", (_request, response) => response.json({ ok: true }));
@@ -34,13 +35,23 @@ async function withServer<T>(
 async function loginCookie(baseUrl: string, password = "shared-secret"): Promise<{ response: Response; cookie: string }> {
   const response = await fetch(`${baseUrl}/api/auth/login`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", [mutationRequestHeader]: "1" },
     body: JSON.stringify({ password })
   });
   return { response, cookie: (response.headers.get("set-cookie") ?? "").split(";", 1)[0] };
 }
 
 describe("LAN authentication HTTP boundary", () => {
+  it("rejects mutations without the application header or with a cross-origin Origin", async () => {
+    await withServer("shared-secret", async (baseUrl) => {
+      expect((await fetch(`${baseUrl}/api/auth/login`, { method: "POST" })).status).toBe(403);
+      expect((await fetch(`${baseUrl}/api/auth/login`, {
+        method: "POST",
+        headers: { [mutationRequestHeader]: "1", Origin: "https://attacker.example" }
+      })).status).toBe(403);
+    });
+  });
+
   it("keeps health and session public while protecting APIs and media", async () => {
     await withServer("shared-secret", async (baseUrl) => {
       expect((await fetch(`${baseUrl}/api/health`)).status).toBe(200);
@@ -54,7 +65,7 @@ describe("LAN authentication HTTP boundary", () => {
     await withServer("shared-secret", async (baseUrl) => {
       const rejected = await fetch(`${baseUrl}/api/auth/login`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", [mutationRequestHeader]: "1" },
         body: JSON.stringify({ password: "wrong-secret" })
       });
       expect(rejected.status).toBe(401);
@@ -69,7 +80,7 @@ describe("LAN authentication HTTP boundary", () => {
       expect((await fetch(`${baseUrl}/api/private`, { headers: { Cookie: cookie } })).status).toBe(200);
       expect((await fetch(`${baseUrl}/outputs/example.mp4`, { headers: { Cookie: cookie } })).status).toBe(204);
 
-      const logout = await fetch(`${baseUrl}/api/auth/logout`, { method: "POST", headers: { Cookie: cookie } });
+      const logout = await fetch(`${baseUrl}/api/auth/logout`, { method: "POST", headers: { Cookie: cookie, [mutationRequestHeader]: "1" } });
       expect(logout.status).toBe(200);
       expect(logout.headers.get("set-cookie")).toContain("Max-Age=0");
     });
@@ -88,11 +99,11 @@ describe("LAN authentication HTTP boundary", () => {
 
         await fetch(`${baseUrl}/api/auth/logout`, {
           method: "POST",
-          headers: { Cookie: `${lanSessionCookie}=invalid.token.parts` }
+          headers: { Cookie: `${lanSessionCookie}=invalid.token.parts`, [mutationRequestHeader]: "1" }
         });
         expect(loggedOutSessionIds).toEqual([]);
 
-        const logout = await fetch(`${baseUrl}/api/auth/logout`, { method: "POST", headers: { Cookie: cookie } });
+        const logout = await fetch(`${baseUrl}/api/auth/logout`, { method: "POST", headers: { Cookie: cookie, [mutationRequestHeader]: "1" } });
         expect(logout.status).toBe(200);
         expect(loggedOutSessionIds).toEqual([session?.id]);
       },

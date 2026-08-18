@@ -4,16 +4,14 @@ import type { LanAuth, LanSession } from "./auth.js";
 import { lanSessionCookie, readCookie } from "./auth.js";
 import type { ProviderSettingsStore } from "./provider-settings.js";
 import { resolveProviderConfig } from "./provider-settings.js";
+import { validatePersonalProviderBaseUrl } from "./provider-url-policy.js";
 
 const secretUpdateSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("keep") }),
   z.object({ action: z.literal("replace"), value: z.string().trim().min(8).max(500) })
 ]);
 
-const httpUrlSchema = z.string().url().max(500).refine((value) => {
-  const protocol = new URL(value).protocol;
-  return protocol === "http:" || protocol === "https:";
-}, "URL must use HTTP or HTTPS");
+const httpUrlSchema = z.string().url().max(500);
 
 const scriptSchema = z.discriminatedUnion("mode", [
   z.object({ mode: z.literal("server") }),
@@ -78,10 +76,18 @@ export function registerProviderSettingsRoutes(
       return response.status(400).json({ message: "API 设置格式不正确", issues: parsed.error.issues });
     }
     try {
+      if (parsed.data.script.mode === "openai" || parsed.data.script.mode === "deepseek") {
+        if (parsed.data.script.baseUrl) {
+          parsed.data.script.baseUrl = validatePersonalProviderBaseUrl(parsed.data.script.baseUrl, environment);
+        }
+      }
       store.replace(session, parsed.data);
       return response.json(resolveProviderConfig(store.get(session.id), environment).view);
-    } catch {
-      return response.status(400).json({ message: "首次配置或切换服务商时必须输入新的 API Key" });
+    } catch (error) {
+      const message = error instanceof Error && error.message.startsWith("Invalid personal API base URL")
+        ? "个人 API 地址必须使用管理员允许的公网 HTTPS 域名"
+        : "首次配置或切换服务商时必须输入新的 API Key";
+      return response.status(400).json({ message });
     }
   });
 

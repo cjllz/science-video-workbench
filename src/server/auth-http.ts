@@ -1,6 +1,28 @@
 import type express from "express";
 import { lanSessionCookie, readCookie, type LanAuth } from "./auth.js";
 
+export const mutationRequestHeader = "x-science-video-request";
+
+export const requireTrustedMutation: express.RequestHandler = (request, response, next) => {
+  if (["GET", "HEAD", "OPTIONS"].includes(request.method)) return next();
+  if (request.get(mutationRequestHeader) !== "1") {
+    return response.status(403).json({ message: "请求来源校验失败" });
+  }
+
+  const origin = request.get("origin");
+  if (origin) {
+    try {
+      const parsed = new URL(origin);
+      if (parsed.host !== request.get("host") || parsed.protocol !== `${request.protocol}:`) {
+        return response.status(403).json({ message: "请求来源校验失败" });
+      }
+    } catch {
+      return response.status(403).json({ message: "请求来源校验失败" });
+    }
+  }
+  return next();
+};
+
 function sessionCookie(value: string, maxAge: number, secure = false): string {
   return [
     `${lanSessionCookie}=${value}`,

@@ -1,5 +1,6 @@
 import path from "node:path";
 import { z } from "zod";
+import { personalApiAllowedHosts } from "./provider-url-policy.js";
 
 export interface RuntimeConfig {
   host: string;
@@ -64,6 +65,14 @@ export function readRuntimeConfig(environment: NodeJS.ProcessEnv): RuntimeConfig
     if (lanAccessToken.length < 16) {
       throw configurationError("LAN_ACCESS_TOKEN", "must be at least 16 characters when HOST is not loopback");
     }
+    const knownPlaceholders = new Set([
+      "replace-with-a-long-random-password",
+      "change-me",
+      "changeme"
+    ]);
+    if (knownPlaceholders.has(lanAccessToken.toLowerCase())) {
+      throw configurationError("LAN_ACCESS_TOKEN", "must not use a documented placeholder value");
+    }
   }
 
   const ffmpegPath = parsed.data.FFMPEG_PATH || undefined;
@@ -88,6 +97,8 @@ export function readRuntimeConfig(environment: NodeJS.ProcessEnv): RuntimeConfig
       throw configurationError("ARK_MAX_GENERATED_SHOTS", "must be an integer from 1 through 6");
     }
   }
+
+  personalApiAllowedHosts(environment);
 
   return Object.freeze({
     host: parsed.data.HOST,

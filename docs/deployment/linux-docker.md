@@ -141,6 +141,10 @@ sudo install -d -m 0755 /srv/science-video-workbench
 sudo install -d -m 0755 /srv/science-video-workbench/app
 sudo install -d -m 0750 -o 10001 -g 10001 /srv/science-video-workbench/data
 sudo install -d -m 0750 /srv/science-video-workbench/backups
+printf 'science-video-workbench-data-v1\n' | \
+  sudo tee /srv/science-video-workbench/data/.science-video-workbench-data >/dev/null
+sudo chown 10001:10001 \
+  /srv/science-video-workbench/data/.science-video-workbench-data
 ```
 
 预期结果：`data` 的 UID/GID 为 `10001:10001`。
@@ -193,6 +197,7 @@ nano deploy/.env.production
 | `APP_IMAGE` | `science-video-workbench` | 本地镜像名 |
 | `APP_VERSION` | 发布标签或短提交号 | 镜像标签和备份清单版本 |
 | `LAN_HOST` | `science-video.lan` | Caddy 证书中的局域网 DNS 名或固定 IP |
+| `LAN_BIND_ADDRESS` | 服务器固定局域网 IP | Caddy 只绑定该宿主机网卡；不能填不存在的地址 |
 | `HTTP_PORT` | `80` | 仅用于 HTTP 到 HTTPS 跳转 |
 | `HTTPS_PORT` | `443` | 用户访问端口 |
 | `DATA_DIR` | `/srv/science-video-workbench/data` | 必须是绝对路径，容器内映射到 `/app/data` |
@@ -230,6 +235,7 @@ nano deploy/.env.production
 | `ARK_MAX_GENERATED_SHOTS` | 单任务最多生成镜头数 | 默认 3，增加会提高时间和费用 |
 | `VIDEO_PROVIDER_URL` | 管理员维护的通用视频适配器 | 用户不能在个人设置中覆盖 |
 | `VIDEO_PROVIDER_API_KEY` | 通用视频适配器密钥 | 可留空 |
+| `PERSONAL_API_ALLOWED_HOSTS` | 额外个人兼容 API 域名 | 逗号分隔的精确 DNS 主机名；默认已允许 OpenAI 和 DeepSeek 官方域名 |
 
 没有外部规划或视频配置时，系统使用本地规划和动画信息卡，并仍可生成本地视频。
 
@@ -296,8 +302,8 @@ docker compose --env-file deploy/.env.production logs --tail=200 caddy
 在证书尚未受信任前，`-k` 只用于服务器本机诊断：
 
 ```bash
-curl -k --resolve '<LAN_HOST>:443:127.0.0.1' --fail --silent https://<LAN_HOST>/api/health
-curl -k --resolve '<LAN_HOST>:443:127.0.0.1' --fail --silent https://<LAN_HOST>/api/ready
+curl -k --resolve '<LAN_HOST>:443:<LAN_BIND_ADDRESS>' --fail --silent https://<LAN_HOST>/api/health
+curl -k --resolve '<LAN_HOST>:443:<LAN_BIND_ADDRESS>' --fail --silent https://<LAN_HOST>/api/ready
 ```
 
 预期结果：
@@ -382,30 +388,40 @@ Caddy CA 保存在命名卷 `science-video-workbench_caddy_data`。普通 `docke
 
 ## 8. 防火墙与网络限制
 
-先确认局域网网段，例如 `192.168.10.0/24`。不要照抄示例网段。
+先确认局域网网段，例如 `192.168.10.0/24`，以及服务器固定地址。不要照抄示例网段。Compose 会把 Caddy 端口只绑定到 `LAN_BIND_ADDRESS`，防火墙是第二层限制。
 
 ### 8.1 UFW
 
 工作目录：任意目录。
 
 ```bash
+sudo ufw allow OpenSSH
+sudo ufw default deny incoming
+sudo ufw default allow outgoing
 sudo ufw allow from <局域网网段> to any port 80 proto tcp
 sudo ufw allow from <局域网网段> to any port 443 proto tcp
 sudo ufw status numbered
+sudo ufw enable
+sudo ufw status verbose
 ```
 
-预期结果：80/443 只允许指定局域网网段。不要开放 8787。
+执行 `ufw enable` 前必须先确认真实 SSH 端口已被允许；如果不是默认 SSH 端口，应先添加对应规则，避免锁死远程会话。检查并删除任何已有的全网 80/443 allow 规则。预期结果是默认拒绝入站，80/443 只允许指定局域网网段。不要开放 8787。
 
 ### 8.2 firewalld
 
 ```bash
+sudo firewall-cmd --get-active-zones
+sudo firewall-cmd --permanent --remove-service=http || true
+sudo firewall-cmd --permanent --remove-service=https || true
+sudo firewall-cmd --permanent --remove-port=80/tcp || true
+sudo firewall-cmd --permanent --remove-port=443/tcp || true
 sudo firewall-cmd --permanent --add-rich-rule='rule family="ipv4" source address="<局域网网段>" port protocol="tcp" port="80" accept'
 sudo firewall-cmd --permanent --add-rich-rule='rule family="ipv4" source address="<局域网网段>" port protocol="tcp" port="443" accept'
 sudo firewall-cmd --reload
 sudo firewall-cmd --list-all
 ```
 
-失败处理：如果服务器有多网卡、VPN 或多个 VLAN，逐个明确允许来源，不要临时改成全网开放。
+预期结果：活动 zone 中没有面向所有来源的 `http`、`https`、`80/tcp` 或 `443/tcp` 服务/端口，只保留来源受限的 rich rule。失败处理：如果服务器有多网卡、VPN 或多个 VLAN，逐个明确允许来源，不要临时改成全网开放。
 
 ### 8.3 验证没有发布应用端口
 
@@ -416,7 +432,7 @@ docker compose --env-file deploy/.env.production ps
 sudo ss -lntp | grep -E ':(80|443|8787)\b'
 ```
 
-预期结果：宿主机监听 80/443，不监听 8787。
+预期结果：宿主机只在 `LAN_BIND_ADDRESS` 上监听 80/443，不监听 8787，也不在公网或 VPN 网卡上监听 80/443。
 
 ## 9. 用户登录与个人 API 设置
 
@@ -431,8 +447,11 @@ sudo ss -lntp | grep -E ':(80|443|8787)\b'
 - 重试任务使用发起重试的当前会话配置；
 - 服务器级变量是可选回退，不会自动显示给用户；
 - 通用 `VIDEO_PROVIDER_URL` 只能由管理员配置。
+- 个人 OpenAI/DeepSeek 兼容地址必须使用 HTTPS、命中管理员域名白名单，并在请求时只解析到公网地址；重定向不会被跟随。
 
 建议每位用户使用自己的供应商账号和配额，不要在群聊中共享第三方 API 密钥。
+
+浏览器客户端会为所有写请求自动添加 `X-Science-Video-Request: 1`。自行编写的 API 调用也必须添加该请求头；服务端还会核对浏览器发送的 `Origin`。缺少请求头或来源不一致会返回 403。
 
 ## 10. 日常运维命令
 
@@ -464,7 +483,7 @@ sudo ./deploy/backup.sh
 
 脚本会：
 
-1. 验证路径不是空值、`/`、用户家目录或仓库根目录；
+1. 验证路径不是空值、`/`、用户家目录或仓库根目录，并核对数据哨兵、UID/GID、数据库布局和运行容器的真实 bind source；
 2. 获取 `flock`，防止备份和恢复重叠；
 3. 检查是否有活动任务；
 4. 仅停止应用容器；
@@ -581,7 +600,7 @@ sudo ./deploy/restore.sh \
   --confirm-restore
 ```
 
-恢复脚本会验证相邻校验和、创建当前数据安全归档、解压到同一文件系统的候选目录、用一次性应用容器执行 `validate-data`、交换目录、修复 `10001:10001` 所有权并等待 readiness。如果交换后启动失败，脚本会自动换回原目录并重启应用。
+恢复脚本会验证相邻校验和、创建当前数据安全归档、解压到同一文件系统的候选目录、确认哨兵/目录/SQLite/预期表均存在、用只读挂载的一次性应用容器执行 `validate-data`、交换目录、修复 `10001:10001` 所有权并等待 readiness。验证过程不会创建数据库或表；空归档会被拒绝。如果交换后启动失败，脚本会自动换回原目录并重启应用。
 
 预期结果：显示 `restore completed` 和安全归档路径，`docker compose ... ps` 中应用恢复 healthy。
 
@@ -607,8 +626,8 @@ sudo ./deploy/restore.sh \
 docker compose --env-file deploy/.env.production ps
 docker compose --env-file deploy/.env.production logs --tail=200 app
 docker compose --env-file deploy/.env.production logs --tail=200 caddy
-curl -k --resolve '<LAN_HOST>:443:127.0.0.1' -i https://<LAN_HOST>/api/health
-curl -k --resolve '<LAN_HOST>:443:127.0.0.1' -i https://<LAN_HOST>/api/ready
+curl -k --resolve '<LAN_HOST>:443:<LAN_BIND_ADDRESS>' -i https://<LAN_HOST>/api/health
+curl -k --resolve '<LAN_HOST>:443:<LAN_BIND_ADDRESS>' -i https://<LAN_HOST>/api/ready
 df -h /srv/science-video-workbench
 stat -c '%u:%g %a %n' /srv/science-video-workbench/data
 ```
@@ -682,7 +701,7 @@ docker compose --env-file deploy/.env.production config --quiet
 docker compose --env-file deploy/.env.production build --pull
 docker compose --env-file deploy/.env.production up -d
 docker compose --env-file deploy/.env.production ps
-curl -k --resolve '<LAN_HOST>:443:127.0.0.1' --fail https://<LAN_HOST>/api/ready
+curl -k --resolve '<LAN_HOST>:443:<LAN_BIND_ADDRESS>' --fail https://<LAN_HOST>/api/ready
 ```
 
 预期结果：应用 healthy，readiness 为 `ok: true`。随后执行第 14 节的登录和功能冒烟。

@@ -4,7 +4,7 @@ import express from "express";
 import { describe, expect, it } from "vitest";
 import type { ProviderSettingsInput } from "../shared/provider-settings.js";
 import { createLanAuth } from "./auth.js";
-import { registerLanAuthRoutes, requireLanAuth } from "./auth-http.js";
+import { mutationRequestHeader, registerLanAuthRoutes, requireLanAuth, requireTrustedMutation } from "./auth-http.js";
 import { registerProviderSettingsRoutes } from "./provider-settings-http.js";
 import { createProviderSettingsStore } from "./provider-settings.js";
 
@@ -28,7 +28,7 @@ function personalSettings(scriptKey: string, videoKey: string): ProviderSettings
 async function login(baseUrl: string): Promise<string> {
   const response = await fetch(`${baseUrl}/api/auth/login`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", [mutationRequestHeader]: "1" },
     body: JSON.stringify({ password: "shared-secret" })
   });
   expect(response.status).toBe(200);
@@ -43,6 +43,7 @@ async function withSettingsServer<T>(
   const auth = createLanAuth(secret, 60);
   const store = createProviderSettingsStore();
   app.use(express.json());
+  app.use("/api", requireTrustedMutation);
   registerLanAuthRoutes(app, auth, store.clear);
   app.use("/api", requireLanAuth(auth));
   registerProviderSettingsRoutes(app, auth, store, {});
@@ -61,7 +62,7 @@ async function withSettingsServer<T>(
 async function putSettings(baseUrl: string, cookie: string, input: unknown): Promise<Response> {
   return fetch(`${baseUrl}/api/settings/providers`, {
     method: "PUT",
-    headers: { Cookie: cookie, "Content-Type": "application/json" },
+    headers: { Cookie: cookie, "Content-Type": "application/json", [mutationRequestHeader]: "1" },
     body: JSON.stringify(input)
   });
 }
@@ -107,12 +108,12 @@ describe("provider settings HTTP boundary", () => {
 
       const cleared = await fetch(`${baseUrl}/api/settings/providers`, {
         method: "DELETE",
-        headers: { Cookie: cookie }
+        headers: { Cookie: cookie, [mutationRequestHeader]: "1" }
       });
       expect(await cleared.json()).toMatchObject({ script: { source: "local" }, video: { source: "local" } });
 
       expect((await putSettings(baseUrl, cookie, personalSettings("second-script-key", "second-video-key"))).status).toBe(200);
-      expect((await fetch(`${baseUrl}/api/auth/logout`, { method: "POST", headers: { Cookie: cookie } })).status).toBe(200);
+      expect((await fetch(`${baseUrl}/api/auth/logout`, { method: "POST", headers: { Cookie: cookie, [mutationRequestHeader]: "1" } })).status).toBe(200);
       const afterLogout = await fetch(`${baseUrl}/api/settings/providers`, { headers: { Cookie: cookie } });
       expect(await afterLogout.json()).toMatchObject({ script: { source: "local" }, video: { source: "local" } });
     });
@@ -145,6 +146,9 @@ describe("provider settings HTTP boundary", () => {
       expect(changed.status).toBe(400);
 
       const invalidInputs = [
+        { ...personalSettings("personal-script-key", "personal-video-key"), script: { mode: "deepseek", apiKey: { action: "replace", value: "personal-script-key" }, baseUrl: "http://api.deepseek.com/v1", model: "deepseek-chat" } },
+        { ...personalSettings("personal-script-key", "personal-video-key"), script: { mode: "deepseek", apiKey: { action: "replace", value: "personal-script-key" }, baseUrl: "https://127.0.0.1/v1", model: "deepseek-chat" } },
+        { ...personalSettings("personal-script-key", "personal-video-key"), script: { mode: "deepseek", apiKey: { action: "replace", value: "personal-script-key" }, baseUrl: "https://unlisted.example/v1", model: "deepseek-chat" } },
         { ...personalSettings("personal-script-key", "personal-video-key"), script: { mode: "deepseek", apiKey: { action: "replace", value: "personal-script-key" }, baseUrl: "ftp://example.com", model: "deepseek-chat" } },
         { ...personalSettings("personal-script-key", "personal-video-key"), script: { mode: "deepseek", apiKey: { action: "replace", value: "personal-script-key" }, model: "x".repeat(121) } },
         { ...personalSettings("personal-script-key", "personal-video-key"), video: { mode: "ark", apiKey: { action: "replace", value: "personal-video-key" }, model: "seedance", maxGeneratedShots: 7 } }

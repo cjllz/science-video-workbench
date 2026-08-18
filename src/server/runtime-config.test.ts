@@ -11,6 +11,10 @@ describe("production runtime configuration", () => {
       PORT: "8787",
       LAN_ACCESS_TOKEN: "too-short"
     })).toThrow("at least 16 characters");
+    expect(() => readRuntimeConfig({
+      HOST: "0.0.0.0",
+      LAN_ACCESS_TOKEN: "replace-with-a-long-random-password"
+    })).toThrow("placeholder");
   });
 
   it("allows unauthenticated loopback development", () => {
@@ -44,6 +48,7 @@ describe("production runtime configuration", () => {
     expect(() => readRuntimeConfig({ HOST: "127.0.0.1", VIDEO_PROVIDER_URL: "ftp://video.example" })).toThrow("VIDEO_PROVIDER_URL");
     expect(() => readRuntimeConfig({ HOST: "127.0.0.1", ARK_MAX_GENERATED_SHOTS: "7" })).toThrow("ARK_MAX_GENERATED_SHOTS");
     expect(() => readRuntimeConfig({ HOST: "127.0.0.1", OPENAI_MODEL: "m".repeat(201) })).toThrow("OPENAI_MODEL");
+    expect(() => readRuntimeConfig({ HOST: "127.0.0.1", PERSONAL_API_ALLOWED_HOSTS: "127.0.0.1" })).toThrow("PERSONAL_API_ALLOWED_HOSTS");
   });
 
   it("never includes secret values in validation errors", () => {

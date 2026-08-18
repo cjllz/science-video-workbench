@@ -8,6 +8,11 @@ const projectRoot = path.resolve(import.meta.dirname, "..");
 const temporaryDirectories: string[] = [];
 const bashAvailable = spawnSync("bash", ["--version"], { stdio: "ignore" }).status === 0;
 
+function bashPath(value: string): string {
+  const match = value.match(/^([A-Za-z]):\\(.*)$/);
+  return match ? `/${match[1].toLowerCase()}/${match[2].replaceAll("\\", "/")}` : value;
+}
+
 async function runBash(script: string, environment: NodeJS.ProcessEnv) {
   return await new Promise<{ code: number | null; stderr: string }>((resolve) => {
     const child = spawn("bash", [script], {
@@ -55,13 +60,24 @@ describe("deployment script safety contracts", () => {
     expect(library).toContain("realpath -m");
     expect(library).toContain("unsafe");
     expect(library).toContain("PROJECT_ROOT");
+    expect(library).toContain(".science-video-workbench-data");
+    expect(library).toContain("assert_compose_data_bind");
   });
 
   it.skipIf(!bashAvailable)("refuses an unsafe data root before invoking Docker", async () => {
     const temporaryBackup = mkdtempSync(path.join(tmpdir(), "science-video-backup-"));
     temporaryDirectories.push(temporaryBackup);
-    const result = await runBash("deploy/backup.sh", { DATA_DIR: "/", BACKUP_DIR: temporaryBackup });
+    const result = await runBash("deploy/backup.sh", { DATA_DIR: "/", BACKUP_DIR: bashPath(temporaryBackup) });
     expect(result.code).not.toBe(0);
     expect(result.stderr).toContain("unsafe DATA_DIR");
+  });
+
+  it.skipIf(!bashAvailable)("refuses a directory without the data sentinel before invoking Docker", async () => {
+    const temporaryData = mkdtempSync(path.join(tmpdir(), "science-video-data-"));
+    const temporaryBackup = mkdtempSync(path.join(tmpdir(), "science-video-backup-"));
+    temporaryDirectories.push(temporaryData, temporaryBackup);
+    const result = await runBash("deploy/backup.sh", { DATA_DIR: bashPath(temporaryData), BACKUP_DIR: bashPath(temporaryBackup) });
+    expect(result.code).not.toBe(0);
+    expect(result.stderr).toContain("data sentinel");
   });
 });
