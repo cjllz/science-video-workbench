@@ -1,4 +1,5 @@
 import type { DataAsset, FeedbackInput, MaterialAsset, ShotRetouchInput, VideoBrief, VideoJob, VideoPlan, VideoRevision } from "../shared/video";
+import type { ProviderSettingsInput, ProviderSettingsView } from "../shared/provider-settings";
 
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
   const response = await fetch(url, {
@@ -51,6 +52,12 @@ export const api = {
   submitFeedback: (id: string, feedback: FeedbackInput) => request<{ ok: boolean; stats: LearningStats }>(`/api/jobs/${id}/feedback`, { method: "POST", body: JSON.stringify(feedback) }),
   getStats: () => request<LearningStats>("/api/stats"),
   getProvider: () => request<ProviderStatus>("/api/provider"),
+  getProviderSettings: () => request<ProviderSettingsView>("/api/settings/providers"),
+  saveProviderSettings: (input: ProviderSettingsInput) => request<ProviderSettingsView>("/api/settings/providers", {
+    method: "PUT",
+    body: JSON.stringify(input)
+  }),
+  clearProviderSettings: () => request<ProviderSettingsView>("/api/settings/providers", { method: "DELETE" }),
   uploadDataAsset: async (file: File): Promise<DataAsset> => {
     const form = new FormData();
     form.append("file", file);
