@@ -109,6 +109,19 @@ export function checkDatabase(): void {
   db.prepare("SELECT 1").get();
 }
 
+export function countActiveJobs(): number {
+  const row = db.prepare(`
+    SELECT COUNT(*) AS count FROM jobs
+    WHERE status IN ('queued', 'planning', 'narrating', 'rendering', 'quality_check')
+  `).get() as { count: number };
+  return row.count;
+}
+
+export function checkDatabaseIntegrity(): boolean {
+  const rows = db.prepare("PRAGMA integrity_check").all() as Array<{ integrity_check: string }>;
+  return rows.length === 1 && rows[0]?.integrity_check === "ok";
+}
+
 export function closeDatabase(): void {
   if (databaseClosed) return;
   databaseClosed = true;
