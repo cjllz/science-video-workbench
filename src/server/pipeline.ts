@@ -14,6 +14,7 @@ import { selectGeneratedShotIndices } from "./shot-policy.js";
 import { loadCachedGeneratedAssets } from "./revisions.js";
 
 const running = new Set<string>();
+const activeOperations = new Set<Promise<void>>();
 let renderConcurrency = createConcurrencyGate(1);
 
 export function configureRenderConcurrency(maxConcurrentRenders: number): void {
@@ -23,6 +24,23 @@ export function configureRenderConcurrency(maxConcurrentRenders: number): void {
 
 export function captureOperationProviderConfig(providers: OperationProviderConfig): OperationProviderConfig {
   return structuredClone(providers);
+}
+
+function trackOperation(key: string, operation: () => Promise<void>): void {
+  if (running.has(key)) return;
+  running.add(key);
+  let tracked: Promise<void>;
+  tracked = Promise.resolve()
+    .then(operation)
+    .finally(() => {
+      running.delete(key);
+      activeOperations.delete(tracked);
+    });
+  activeOperations.add(tracked);
+}
+
+export async function waitForPipelineIdle(): Promise<void> {
+  await Promise.allSettled([...activeOperations]);
 }
 
 function publicPath(jobId: string, filename: string): string {
@@ -41,18 +59,14 @@ function combinedDataAssets(job: VideoJob, materials: MaterialAsset[]): DataAsse
 
 export function enqueuePlanning(jobId: string, providers: OperationProviderConfig): void {
   const key = `planning:${jobId}`;
-  if (running.has(key)) return;
   const snapshot = captureOperationProviderConfig(providers);
-  running.add(key);
-  void processPlanning(jobId, snapshot).finally(() => running.delete(key));
+  trackOperation(key, () => processPlanning(jobId, snapshot));
 }
 
 export function enqueueRendering(jobId: string, providers: OperationProviderConfig): void {
   const key = `rendering:${jobId}`;
-  if (running.has(key)) return;
   const snapshot = captureOperationProviderConfig(providers);
-  running.add(key);
-  void renderConcurrency.run(() => processRendering(jobId, snapshot)).finally(() => running.delete(key));
+  trackOperation(key, () => renderConcurrency.run(() => processRendering(jobId, snapshot)));
 }
 
 export function enqueueRetouch(
@@ -62,10 +76,8 @@ export function enqueueRetouch(
   providers: OperationProviderConfig
 ): void {
   const key = `retouch:${jobId}`;
-  if (running.has(key)) return;
   const snapshot = captureOperationProviderConfig(providers);
-  running.add(key);
-  void renderConcurrency.run(() => processRetouch(jobId, shotId, visualAction, snapshot)).finally(() => running.delete(key));
+  trackOperation(key, () => renderConcurrency.run(() => processRetouch(jobId, shotId, visualAction, snapshot)));
 }
 
 export const enqueueJob = enqueuePlanning;

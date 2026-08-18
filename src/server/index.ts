@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import type { Server } from "node:http";
 import path from "node:path";
 import { loadEnvFile } from "node:process";
 import express from "express";
@@ -9,12 +10,12 @@ import { VIDEO_STYLES, type ShotRetouchInput, type VideoJob, type VideoPlan } fr
 import { createLanAuth } from "./auth.js";
 import { registerLanAuthRoutes, requireLanAuth } from "./auth-http.js";
 import { parseDataAsset } from "./data-assets.js";
-import { addFeedback, checkDatabase, createDataAsset, createJob, getDataAssets, getJob, getJobRevision, getLearningStats, getMaterialAssets, listJobRevisions, listJobs, listMaterialAssets, recordEvent, updateJob, updateMaterialVariable } from "./db.js";
+import { addFeedback, checkDatabase, closeDatabase, createDataAsset, createJob, getDataAssets, getJob, getJobRevision, getLearningStats, getMaterialAssets, listJobRevisions, listJobs, listMaterialAssets, recordEvent, updateJob, updateMaterialVariable } from "./db.js";
 import { assertPlanEditable, assertRenderable } from "./job-lifecycle.js";
 import { markInterruptedJobsFailed, retryPhase } from "./job-recovery.js";
 import { classifyMaterial, storeMaterialUpload } from "./materials.js";
 import { dataRoot, materialRoot, outputRoot, projectRoot } from "./paths.js";
-import { configureRenderConcurrency, enqueuePlanning, enqueueRendering, enqueueRetouch, enqueueRetry } from "./pipeline.js";
+import { configureRenderConcurrency, enqueuePlanning, enqueueRendering, enqueueRetouch, enqueueRetry, waitForPipelineIdle } from "./pipeline.js";
 import { inspectPlanForRender } from "./preflight.js";
 import { loadProviderAssetManifest, selectReferenceVideoUrl } from "./provider-assets.js";
 import { authSessionForRequest, registerProviderSettingsRoutes } from "./provider-settings-http.js";
@@ -24,6 +25,7 @@ import { applyShotRetouch, assertRetouchable, assertVideoEditSource, normalizeRe
 import { archiveCurrentRevision, restoreArchivedRevision } from "./revisions.js";
 import { readRuntimeConfig } from "./runtime-config.js";
 import { createDeploymentReadiness } from "./readiness.js";
+import { createShutdownController } from "./shutdown.js";
 import { getFfmpegPath } from "./tooling.js";
 
 try {
@@ -42,6 +44,17 @@ const readiness = createDeploymentReadiness({
   database: checkDatabase,
   dataDirectory: dataRoot,
   ffmpegPath: getFfmpegPath()
+});
+let server: Server | undefined;
+const shutdown = createShutdownController({
+  timeoutMs: 30_000,
+  beginReadinessShutdown: readiness.beginShutdown,
+  closeServer: () => new Promise<void>((resolve, reject) => {
+    if (!server?.listening) return resolve();
+    server.close((error) => error ? reject(error) : resolve());
+  }),
+  waitForWork: waitForPipelineIdle,
+  closeDatabase
 });
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -84,6 +97,12 @@ app.get("/api/ready", async (_request, response) => {
 });
 registerLanAuthRoutes(app, lanAuth, providerSettings.clear);
 app.use("/api", requireLanAuth(lanAuth));
+app.use("/api", (request, response, next) => {
+  if (["POST", "PUT", "PATCH", "DELETE"].includes(request.method) && !shutdown.acceptingWork()) {
+    return response.status(503).json({ message: "服务器正在停止，暂不接受新操作" });
+  }
+  return next();
+});
 registerProviderSettingsRoutes(app, lanAuth, providerSettings, process.env);
 app.use("/outputs", requireLanAuth(lanAuth), express.static(outputRoot, { maxAge: "1h", fallthrough: false }));
 app.use("/materials", requireLanAuth(lanAuth), express.static(materialRoot, { maxAge: "1h", fallthrough: false }));
@@ -368,8 +387,27 @@ app.use((error: unknown, _request: express.Request, response: express.Response, 
 
 const interruptedJobCount = markInterruptedJobsFailed();
 
-app.listen(runtimeConfig.port, runtimeConfig.host, () => {
+server = app.listen(runtimeConfig.port, runtimeConfig.host, () => {
   console.log(`Science video API listening on http://${runtimeConfig.host}:${runtimeConfig.port}`);
   if (interruptedJobCount) console.warn(`Marked ${interruptedJobCount} interrupted job(s) as failed after restart`);
   if (!lanAuth.enabled) console.warn("LAN_ACCESS_TOKEN is not configured; LAN authentication is disabled");
 });
+
+const handleShutdownSignal = (): void => {
+  void shutdown.begin().then(
+    ({ drained }) => {
+      if (!drained) {
+        console.warn("Shutdown deadline reached before active work completed");
+        server?.closeAllConnections();
+      }
+      process.exitCode = 0;
+    },
+    (error: unknown) => {
+      console.error("Graceful shutdown failed", error);
+      process.exitCode = 1;
+    }
+  );
+};
+
+process.once("SIGTERM", handleShutdownSignal);
+process.once("SIGINT", handleShutdownSignal);

@@ -6,6 +6,7 @@ import { dataRoot, databasePath } from "./paths.js";
 fs.mkdirSync(dataRoot, { recursive: true });
 
 const db = new DatabaseSync(databasePath);
+let databaseClosed = false;
 const initializationTimeoutMs = 5_000;
 const sqliteBusyErrorCode = 5;
 const retryWait = new Int32Array(new SharedArrayBuffer(4));
@@ -106,6 +107,12 @@ type JobRow = {
 
 export function checkDatabase(): void {
   db.prepare("SELECT 1").get();
+}
+
+export function closeDatabase(): void {
+  if (databaseClosed) return;
+  databaseClosed = true;
+  db.close();
 }
 
 function rowToJob(row: JobRow): VideoJob {
