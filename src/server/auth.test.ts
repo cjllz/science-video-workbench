@@ -19,7 +19,11 @@ describe("LAN authentication", () => {
       id: expect.stringMatching(/^[A-Za-z0-9_-]{20,}$/),
       expiresAt: now + 60_000
     });
-    expect(secondSession?.id).not.toBe(firstSession?.id);
+    expect(secondSession).toEqual({
+      id: expect.stringMatching(/^[A-Za-z0-9_-]{20,}$/),
+      expiresAt: now + 60_000
+    });
+    expect(secondSession!.id).not.toBe(firstSession!.id);
     expect(auth.validateSession(firstToken, now + 30_000)).toBe(true);
   });
 
