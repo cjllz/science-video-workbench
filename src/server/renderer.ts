@@ -1,15 +1,15 @@
 import { spawn } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
-import ffmpegStatic from "ffmpeg-static";
 import sharp from "sharp";
 import type { DataAsset, DataCell, MaterialAsset, MaterialPlacement, ShotMaterialBinding, ShotPlan, VideoBrief, VideoPlan } from "../shared/video.js";
 import { VIDEO_STYLES } from "../shared/video.js";
 import { getMaterialStoragePath } from "./db.js";
 import { projectRoot } from "./paths.js";
 import type { GeneratedAsset } from "./providers/video.js";
+import { getFfmpegPath } from "./tooling.js";
 
-const ffmpegPath = ffmpegStatic;
+const ffmpegPath = getFfmpegPath();
 
 function run(command: string, args: string[]): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -192,7 +192,6 @@ async function renderCard(brief: VideoBrief, plan: VideoPlan, shot: ShotPlan, de
 }
 
 async function renderSegment(input: GeneratedAsset, imagePath: string, outputPath: string, duration: number, brief: VideoBrief): Promise<void> {
-  if (!ffmpegPath) throw new Error("Bundled ffmpeg is unavailable");
   const { width, height } = dimensions(brief);
   const fadeOut = Math.max(0, duration - 0.3).toFixed(2);
   const commonFilter = `scale=${width}:${height}:force_original_aspect_ratio=increase,crop=${width}:${height},fade=t=in:st=0:d=0.25,fade=t=out:st=${fadeOut}:d=0.25,format=yuv420p`;
@@ -274,7 +273,6 @@ async function renderDataOverlay(shot: ShotPlan, binding: ShotMaterialBinding, m
 }
 
 async function applyExactOverlays(segmentPath: string, shot: ShotPlan, materials: MaterialAsset[], brief: VideoBrief): Promise<void> {
-  if (!ffmpegPath) return;
   const bindings = overlayBindingsForShot(shot);
   if (!bindings.length) return;
   const { width, height } = dimensions(brief);
@@ -324,7 +322,6 @@ export async function synthesizeNarration(text: string, outputPath: string, dura
   try {
     await run("powershell", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script, "-Text", text, "-OutputPath", outputPath, "-Rate", duration <= 30 ? "2" : "1"]);
   } catch (windowsError) {
-    if (!ffmpegPath) throw windowsError;
     console.warn("TTS unavailable, generating silent narration:", windowsError);
     await run(ffmpegPath, ["-y", "-f", "lavfi", "-i", "anullsrc=r=44100:cl=stereo", "-t", String(duration), outputPath]);
   }
@@ -364,7 +361,6 @@ export async function renderVideo(
   materials: MaterialAsset[] = [],
   onShotRendered?: (index: number) => void
 ): Promise<RenderResult> {
-  if (!ffmpegPath) throw new Error("Bundled ffmpeg is unavailable");
   await fs.mkdir(directory, { recursive: true });
   const narrationPath = path.join(directory, "narration.mp3");
   const subtitlePath = path.join(directory, "captions.srt");
@@ -401,7 +397,6 @@ export async function renderVideo(
 }
 
 export async function inspectVideo(outputPath: string): Promise<{ duration: number; size: number }> {
-  if (!ffmpegPath) throw new Error("Bundled ffmpeg is unavailable");
   const stats = await fs.stat(outputPath);
   const output = await run(ffmpegPath, ["-i", outputPath, "-f", "null", "-"]);
   const match = output.match(/Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)/);
