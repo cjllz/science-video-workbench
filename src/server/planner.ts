@@ -3,6 +3,7 @@ import { z } from "zod";
 import type { DataAsset, ShotPlan, VideoBrief, VideoPlan } from "../shared/video.js";
 import { VIDEO_STYLES } from "../shared/video.js";
 import type { ExperienceMatch } from "./db.js";
+import type { PlannerConfig } from "./provider-settings.js";
 
 const sentenceEnd = /(?<=[。！？!?；;])/;
 const llmPlanSchema = z.object({
@@ -79,56 +80,16 @@ function distributeDurations(parts: string[], total: number): number[] {
   return values.map((value) => Number((value * scale).toFixed(2)));
 }
 
-interface PlannerConfig {
-  apiKey: string;
-  baseUrl: string;
-  model: string;
-  supportsJsonMode: boolean;
-  disableThinking: boolean;
-}
-
 export interface PlannerStatus {
   connected: boolean;
   provider: "openai" | "deepseek" | "ark" | "local";
   model?: string;
 }
 
-export function getPlannerStatus(): PlannerStatus {
-  if (process.env.OPENAI_API_KEY && process.env.OPENAI_MODEL) return { connected: true, provider: "openai", model: process.env.OPENAI_MODEL };
-  if (process.env.DEEPSEEK_API_KEY) return { connected: true, provider: "deepseek", model: process.env.DEEPSEEK_MODEL || "deepseek-chat" };
-  if (process.env.ARK_API_KEY) return { connected: true, provider: "ark", model: process.env.ARK_TEXT_MODEL || "doubao-seed-2-1-pro-260628" };
-  return { connected: false, provider: "local" };
-}
-
-function plannerConfig(): PlannerConfig | undefined {
-  if (process.env.OPENAI_API_KEY && process.env.OPENAI_MODEL) {
-    return {
-      apiKey: process.env.OPENAI_API_KEY,
-      baseUrl: (process.env.OPENAI_BASE_URL || "https://api.openai.com/v1").replace(/\/$/, ""),
-      model: process.env.OPENAI_MODEL,
-      supportsJsonMode: true,
-      disableThinking: false
-    };
-  }
-  if (process.env.DEEPSEEK_API_KEY) {
-    return {
-      apiKey: process.env.DEEPSEEK_API_KEY,
-      baseUrl: (process.env.DEEPSEEK_BASE_URL || "https://api.deepseek.com/v1").replace(/\/$/, ""),
-      model: process.env.DEEPSEEK_MODEL || "deepseek-chat",
-      supportsJsonMode: true,
-      disableThinking: false
-    };
-  }
-  if (process.env.ARK_API_KEY) {
-    return {
-      apiKey: process.env.ARK_API_KEY,
-      baseUrl: "https://ark.cn-beijing.volces.com/api/v3",
-      model: process.env.ARK_TEXT_MODEL || "doubao-seed-2-1-pro-260628",
-      supportsJsonMode: false,
-      disableThinking: true
-    };
-  }
-  return undefined;
+export function getPlannerStatus(config?: PlannerConfig): PlannerStatus {
+  return config
+    ? { connected: true, provider: config.provider, model: config.model }
+    : { connected: false, provider: "local" };
 }
 
 function extractJson(content: string): unknown {
@@ -173,8 +134,12 @@ function applyVisualGuardrails(plan: VideoPlan, brief: VideoBrief): VideoPlan {
   };
 }
 
-async function planWithLlm(brief: VideoBrief, dataAssets: DataAsset[], experience?: ExperienceMatch): Promise<VideoPlan | undefined> {
-  const config = plannerConfig();
+async function planWithLlm(
+  brief: VideoBrief,
+  dataAssets: DataAsset[],
+  experience?: ExperienceMatch,
+  config?: PlannerConfig
+): Promise<VideoPlan | undefined> {
   if (!config) return undefined;
   const style = VIDEO_STYLES.find((item) => item.id === brief.style);
   const shotCount = Math.min(10, Math.max(5, Math.round(brief.duration / 6)));
@@ -252,9 +217,14 @@ function applyDataShots(plan: VideoPlan, dataAssets: DataAsset[]): VideoPlan {
   return { ...plan, script: timedShots.map((shot) => shot.narration).join(""), shots: timedShots };
 }
 
-export async function createPlan(brief: VideoBrief, experience?: ExperienceMatch, dataAssets: DataAsset[] = []): Promise<VideoPlan> {
+export async function createPlan(
+  brief: VideoBrief,
+  experience?: ExperienceMatch,
+  dataAssets: DataAsset[] = [],
+  config?: PlannerConfig
+): Promise<VideoPlan> {
   try {
-    const llmPlan = await planWithLlm(brief, dataAssets, experience);
+    const llmPlan = await planWithLlm(brief, dataAssets, experience, config);
     if (llmPlan) return applyDataShots(applyVisualGuardrails({ ...llmPlan, experienceUsed: experience?.jobId }, brief), dataAssets);
   } catch (error) {
     console.warn("LLM planner unavailable, using local planner:", error);

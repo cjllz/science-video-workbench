@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { VideoBrief } from "../shared/video.js";
-import { createPlan, summarizeExperience } from "./planner.js";
+import type { PlannerConfig } from "./provider-settings.js";
+import { createPlan, getPlannerStatus, summarizeExperience } from "./planner.js";
 
 const baseBrief: VideoBrief = {
   topic: "为什么睡眠影响记忆",
@@ -13,6 +14,19 @@ const baseBrief: VideoBrief = {
 };
 
 describe("createPlan", () => {
+  it("reports only the supplied planner configuration", () => {
+    const planner: PlannerConfig = {
+      provider: "deepseek",
+      apiKey: "personal-key",
+      baseUrl: "https://api.deepseek.com/v1",
+      model: "personal-model",
+      supportsJsonMode: true,
+      disableThinking: false
+    };
+    expect(getPlannerStatus(planner)).toEqual({ connected: true, provider: "deepseek", model: "personal-model" });
+    expect(getPlannerStatus()).toEqual({ connected: false, provider: "local" });
+  });
+
   it("creates a valid 30 second storyboard with meaningful shots", async () => {
     const plan = await createPlan(baseBrief);
     const totalDuration = plan.shots.reduce((sum, shot) => sum + shot.duration, 0);

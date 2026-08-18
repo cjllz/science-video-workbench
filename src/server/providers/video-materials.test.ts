@@ -1,6 +1,14 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { MaterialAsset, ShotPlan, VideoBrief } from "../../shared/video.js";
-import { buildArkGenerationRequest, buildArkVideoEditRequest } from "./video.js";
+import type { VideoProviderConfig } from "../provider-settings.js";
+import { buildArkGenerationRequest, buildArkVideoEditRequest, generateShotAsset, getVideoProviderStatus, ProviderRequestError } from "./video.js";
+
+const arkConfig: Extract<VideoProviderConfig, { provider: "ark" }> = {
+  provider: "ark",
+  apiKey: "personal-key",
+  model: "personal-video",
+  maxGeneratedShots: 2
+};
 
 const brief: VideoBrief = {
   topic: "正确减药",
@@ -44,8 +52,21 @@ const shot: ShotPlan = {
 };
 
 describe("Seedance material request", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("reports and builds requests from the supplied video configuration", () => {
+    expect(getVideoProviderStatus(arkConfig)).toEqual({
+      connected: true,
+      provider: "ark",
+      model: "personal-video",
+      maxGeneratedShots: 2
+    });
+    const plainShot = { ...shot, visualPrompt: "医生向患者解释", materialBindings: [] };
+    expect(buildArkGenerationRequest(brief, plainShot, [], new Map(), arkConfig).model).toBe("personal-video");
+  });
+
   it("rewrites variables and attaches an ordered image reference", () => {
-    const request = buildArkGenerationRequest(brief, shot, [image], new Map([[image.id, "data:image/png;base64,abc"]]));
+    const request = buildArkGenerationRequest(brief, shot, [image], new Map([[image.id, "data:image/png;base64,abc"]]), arkConfig);
     expect(request.content[0]).toEqual(expect.objectContaining({ type: "text", text: expect.stringContaining("@图片1") }));
     expect(request.content[1]).toEqual({
       type: "image_url",
@@ -58,7 +79,7 @@ describe("Seedance material request", () => {
   it("keeps exact overlays out of the provider request", () => {
     const exactShot = structuredClone(shot);
     exactShot.materialBindings![0].mode = "exact_overlay";
-    const request = buildArkGenerationRequest(brief, exactShot, [image], new Map());
+    const request = buildArkGenerationRequest(brief, exactShot, [image], new Map(), arkConfig);
     expect(request.content).toHaveLength(1);
     expect(request.content[0]).toEqual(expect.objectContaining({ text: expect.stringContaining("后期叠加") }));
   });
@@ -71,7 +92,8 @@ describe("Seedance material request", () => {
       editShot,
       [image],
       new Map([[image.id, "https://cdn.example.com/device.png"]]),
-      "https://cdn.example.com/original-shot.mp4"
+      "https://cdn.example.com/original-shot.mp4",
+      arkConfig
     );
     expect(request.content[0]).toEqual(expect.objectContaining({ type: "text", text: expect.stringContaining("@图片1") }));
     expect(request.content[1]).toEqual({ type: "image_url", image_url: { url: "https://cdn.example.com/device.png" } });
@@ -80,5 +102,36 @@ describe("Seedance material request", () => {
       video_url: { url: "https://cdn.example.com/original-shot.mp4" },
       role: "reference_video"
     });
+  });
+
+  it("returns a safe typed error for provider authentication failures", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("denied personal-http-key", { status: 401 })));
+    const config: VideoProviderConfig = {
+      provider: "http",
+      endpoint: "https://video.example/generate",
+      apiKey: "personal-http-key",
+      maxGeneratedShots: 1
+    };
+
+    const error = await generateShotAsset(brief, { ...shot, materialBindings: [] }, ".", [], config).catch((failure) => failure);
+    expect(error).toBeInstanceOf(ProviderRequestError);
+    expect(error).toMatchObject({ provider: "http", kind: "authentication", message: "视频服务认证失败" });
+    expect(JSON.stringify(error)).not.toContain("personal-http-key");
+  });
+
+  it("normalizes malformed successful provider responses", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("{}", {
+      status: 200,
+      headers: { "Content-Type": "application/json" }
+    })));
+    const config: VideoProviderConfig = {
+      provider: "http",
+      endpoint: "https://video.example/generate",
+      maxGeneratedShots: 1
+    };
+
+    const error = await generateShotAsset(brief, { ...shot, materialBindings: [] }, ".", [], config).catch((failure) => failure);
+    expect(error).toBeInstanceOf(ProviderRequestError);
+    expect(error).toMatchObject({ provider: "http", kind: "unavailable", message: "视频服务暂时不可用" });
   });
 });
