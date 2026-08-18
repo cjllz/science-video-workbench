@@ -5,7 +5,8 @@ import { createConcurrencyGate } from "./concurrency-gate.js";
 import { findExperience, getDataAssets, getJob, getMaterialAssets, recordEvent, updateJob } from "./db.js";
 import { outputRoot } from "./paths.js";
 import { createPlan } from "./planner.js";
-import { editShotAsset, generateShotAsset, getVideoProviderStatus, type GeneratedAsset } from "./providers/video.js";
+import { redactProviderError, type OperationProviderConfig } from "./provider-settings.js";
+import { editShotAsset, generateShotAsset, getVideoProviderStatus, ProviderRequestError, type GeneratedAsset } from "./providers/video.js";
 import { inspectVideo, renderVideo } from "./renderer.js";
 import { loadProviderAssetManifest, saveProviderAssetRecord, selectReferenceVideoUrl } from "./provider-assets.js";
 import { assertVideoEditSource } from "./retouch.js";
@@ -14,6 +15,10 @@ import { loadCachedGeneratedAssets } from "./revisions.js";
 
 const running = new Set<string>();
 const renderConcurrency = createConcurrencyGate(Number(process.env.MAX_CONCURRENT_RENDERS || 1));
+
+export function captureOperationProviderConfig(providers: OperationProviderConfig): OperationProviderConfig {
+  return structuredClone(providers);
+}
 
 function publicPath(jobId: string, filename: string): string {
   return `/outputs/${jobId}/${filename}`;
@@ -29,37 +34,46 @@ function combinedDataAssets(job: VideoJob, materials: MaterialAsset[]): DataAsse
   return [...new Map([...direct, ...attached].map((asset) => [asset.id, asset])).values()];
 }
 
-export function enqueuePlanning(jobId: string): void {
+export function enqueuePlanning(jobId: string, providers: OperationProviderConfig): void {
   const key = `planning:${jobId}`;
   if (running.has(key)) return;
+  const snapshot = captureOperationProviderConfig(providers);
   running.add(key);
-  void processPlanning(jobId).finally(() => running.delete(key));
+  void processPlanning(jobId, snapshot).finally(() => running.delete(key));
 }
 
-export function enqueueRendering(jobId: string): void {
+export function enqueueRendering(jobId: string, providers: OperationProviderConfig): void {
   const key = `rendering:${jobId}`;
   if (running.has(key)) return;
+  const snapshot = captureOperationProviderConfig(providers);
   running.add(key);
-  void renderConcurrency.run(() => processRendering(jobId)).finally(() => running.delete(key));
+  void renderConcurrency.run(() => processRendering(jobId, snapshot)).finally(() => running.delete(key));
 }
 
-export function enqueueRetouch(jobId: string, shotId: string, visualAction: RetouchVisualAction): void {
+export function enqueueRetouch(
+  jobId: string,
+  shotId: string,
+  visualAction: RetouchVisualAction,
+  providers: OperationProviderConfig
+): void {
   const key = `retouch:${jobId}`;
   if (running.has(key)) return;
+  const snapshot = captureOperationProviderConfig(providers);
   running.add(key);
-  void renderConcurrency.run(() => processRetouch(jobId, shotId, visualAction)).finally(() => running.delete(key));
+  void renderConcurrency.run(() => processRetouch(jobId, shotId, visualAction, snapshot)).finally(() => running.delete(key));
 }
 
 export const enqueueJob = enqueuePlanning;
 
-export function enqueueRetry(jobId: string): void {
+export function enqueueRetry(jobId: string, providers: OperationProviderConfig): void {
+  const snapshot = captureOperationProviderConfig(providers);
   const job = getJob(jobId);
   if (!job) return;
-  if (job.plan) enqueueRendering(jobId);
-  else enqueuePlanning(jobId);
+  if (job.plan) enqueueRendering(jobId, snapshot);
+  else enqueuePlanning(jobId, snapshot);
 }
 
-async function processPlanning(jobId: string): Promise<void> {
+async function processPlanning(jobId: string, providers: OperationProviderConfig): Promise<void> {
   const job = getJob(jobId);
   if (!job) return;
 
@@ -67,15 +81,16 @@ async function processPlanning(jobId: string): Promise<void> {
     updateJob(jobId, { status: "planning", progress: 8, currentStage: "正在理解主题和历史经验" });
     const experience = findExperience(job.brief);
     const dataAssets = getDataAssets(job.brief.dataAssetIds ?? []);
-    const plan = await createPlan(job.brief, experience, dataAssets);
+    const plan = await createPlan(job.brief, experience, dataAssets, providers.planner);
     updateJob(jobId, { status: "awaiting_confirmation", progress: 100, currentStage: "剧本已生成，请确认分镜和素材", plan });
     recordEvent(jobId, "plan.created", { plan, experience: experience?.jobId });
   } catch (error) {
-    console.error(`Job ${jobId} planning failed`, error);
-    updateJob(jobId, { status: "failed", currentStage: "剧本生成失败", error: error instanceof Error ? error.message : String(error) });
+    const message = redactProviderError(error, providers.secrets);
+    console.error(`Job ${jobId} planning failed: ${message}`);
+    updateJob(jobId, { status: "failed", currentStage: "剧本生成失败", error: message });
   }
 }
-async function processRendering(jobId: string): Promise<void> {
+async function processRendering(jobId: string, providers: OperationProviderConfig): Promise<void> {
   const job = getJob(jobId);
   if (!job?.plan) return;
   const plan = job.plan;
@@ -88,7 +103,7 @@ async function processRendering(jobId: string): Promise<void> {
 
     updateJob(jobId, { status: "rendering", progress: 28, currentStage: "正在准备镜头素材" });
     const assets: GeneratedAsset[] = [];
-    const provider = getVideoProviderStatus();
+    const provider = getVideoProviderStatus(providers.video);
     const generationLimit = job.brief.generationMode === "all-ai" ? plan.shots.length : provider.maxGeneratedShots;
     const generatedIndices = selectGeneratedShotIndices(plan.shots, generationLimit);
     let generatedPosition = 0;
@@ -110,7 +125,7 @@ async function processRendering(jobId: string): Promise<void> {
           progress: 28 + Math.round((generatedPosition / Math.max(generatedIndices.size, 1)) * 8),
           currentStage: `Seedance 正在生成镜头 ${generatedPosition}/${generatedIndices.size}`
         });
-        const asset = await generateShotAsset(job.brief, shot, directory, materials);
+        const asset = await generateShotAsset(job.brief, shot, directory, materials, providers.video);
         assets.push(asset);
         if (asset.kind === "video") await saveProviderAssetRecord(directory, {
           shotId: shot.id, index: shot.index, filename: path.basename(asset.path), provider: asset.provider,
@@ -118,9 +133,10 @@ async function processRendering(jobId: string): Promise<void> {
         });
         recordEvent(jobId, "shot.asset.created", { shotId: shot.id, provider: asset.provider, kind: asset.kind });
       } catch (error) {
+        if (error instanceof ProviderRequestError) throw error;
         assets.push({ kind: "motion_card", provider: "local" });
         shot.retryCount += 1;
-        recordEvent(jobId, "shot.asset.fallback", { shotId: shot.id, error: String(error) });
+        recordEvent(jobId, "shot.asset.fallback", { shotId: shot.id, error: redactProviderError(error, providers.secrets) });
       }
     }
 
@@ -146,12 +162,18 @@ async function processRendering(jobId: string): Promise<void> {
       subtitleUrl: publicPath(jobId, "captions.srt")
     });
   } catch (error) {
-    console.error(`Job ${jobId} failed`, error);
-    updateJob(jobId, { status: "failed", currentStage: "生成失败", error: error instanceof Error ? error.message : String(error) });
+    const message = redactProviderError(error, providers.secrets);
+    console.error(`Job ${jobId} failed: ${message}`);
+    updateJob(jobId, { status: "failed", currentStage: "生成失败", error: message });
   }
 }
 
-async function processRetouch(jobId: string, shotId: string, visualAction: RetouchVisualAction): Promise<void> {
+async function processRetouch(
+  jobId: string,
+  shotId: string,
+  visualAction: RetouchVisualAction,
+  providers: OperationProviderConfig
+): Promise<void> {
   const job = getJob(jobId);
   if (!job?.plan) return;
   const plan = job.plan;
@@ -175,7 +197,7 @@ async function processRetouch(jobId: string, shotId: string, visualAction: Retou
       };
       const referenceUrl = selectReferenceVideoUrl(record, jobId);
       assertVideoEditSource(visualAction, referenceUrl);
-      assets[target.index] = await editShotAsset(job.brief, target, directory, materials, referenceUrl!);
+      assets[target.index] = await editShotAsset(job.brief, target, directory, materials, referenceUrl!, providers.video);
       const edited = assets[target.index];
       if (edited.kind === "video") await saveProviderAssetRecord(directory, {
         shotId: target.id, index: target.index, filename: path.basename(edited.path), provider: edited.provider,
@@ -184,7 +206,7 @@ async function processRetouch(jobId: string, shotId: string, visualAction: Retou
       recordEvent(jobId, "shot.retouch.edited", { shotId });
     } else if (visualAction === "regenerate" && target.assetType !== "data_visualization") {
       try {
-        assets[target.index] = await generateShotAsset(job.brief, target, directory, materials);
+        assets[target.index] = await generateShotAsset(job.brief, target, directory, materials, providers.video);
         const generated = assets[target.index];
         if (generated.kind === "video") await saveProviderAssetRecord(directory, {
           shotId: target.id, index: target.index, filename: path.basename(generated.path), provider: generated.provider,
@@ -192,9 +214,10 @@ async function processRetouch(jobId: string, shotId: string, visualAction: Retou
         });
         recordEvent(jobId, "shot.retouch.generated", { shotId });
       } catch (error) {
+        if (error instanceof ProviderRequestError) throw error;
         const fallback = await loadCachedGeneratedAssets(plan, directory);
         assets[target.index] = fallback[target.index] ?? { kind: "motion_card", provider: "local" };
-        recordEvent(jobId, "shot.retouch.fallback", { shotId, error: String(error) });
+        recordEvent(jobId, "shot.retouch.fallback", { shotId, error: redactProviderError(error, providers.secrets) });
       }
     }
 
@@ -211,8 +234,9 @@ async function processRetouch(jobId: string, shotId: string, visualAction: Retou
       outputUrl: publicPath(jobId, "video.mp4"), posterUrl: publicPath(jobId, path.basename(result.posterPath)), subtitleUrl: publicPath(jobId, "captions.srt"), error: undefined
     });
   } catch (error) {
-    console.error(`Job ${jobId} retouch failed`, error);
-    updateJob(jobId, { status: "failed", currentStage: "镜头微调失败", error: error instanceof Error ? error.message : String(error) });
+    const message = redactProviderError(error, providers.secrets);
+    console.error(`Job ${jobId} retouch failed: ${message}`);
+    updateJob(jobId, { status: "failed", currentStage: "镜头微调失败", error: message });
   }
 }
 

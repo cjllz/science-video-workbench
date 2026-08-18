@@ -18,7 +18,7 @@ import { enqueuePlanning, enqueueRendering, enqueueRetouch, enqueueRetry } from 
 import { inspectPlanForRender } from "./preflight.js";
 import { loadProviderAssetManifest, selectReferenceVideoUrl } from "./provider-assets.js";
 import { authSessionForRequest, registerProviderSettingsRoutes } from "./provider-settings-http.js";
-import { createProviderSettingsStore, resolveProviderConfig } from "./provider-settings.js";
+import { createProviderSettingsStore, resolveProviderConfig, type OperationProviderConfig } from "./provider-settings.js";
 import { parseScriptImport } from "./script-imports.js";
 import { applyShotRetouch, assertRetouchable, assertVideoEditSource, normalizeRetouchVisualAction } from "./retouch.js";
 import { archiveCurrentRevision, restoreArchivedRevision } from "./revisions.js";
@@ -142,11 +142,15 @@ const feedbackSchema = z.object({
   notes: z.string().trim().max(1000).optional()
 });
 
+function providersFor(request: express.Request): OperationProviderConfig {
+  const session = authSessionForRequest(request, lanAuth);
+  return resolveProviderConfig(session ? providerSettings.get(session.id) : undefined, process.env);
+}
+
 app.get("/api/styles", (_request, response) => response.json(VIDEO_STYLES));
 app.get("/api/stats", (_request, response) => response.json(getLearningStats()));
 app.get("/api/provider", (request, response) => {
-  const session = authSessionForRequest(request, lanAuth);
-  const resolved = resolveProviderConfig(session ? providerSettings.get(session.id) : undefined, process.env);
+  const resolved = providersFor(request);
   return response.json({ ...resolved.view.video, planner: resolved.view.script });
 });
 app.post("/api/script-imports", scriptUpload.single("file"), async (request, response) => {
@@ -210,7 +214,7 @@ app.post("/api/jobs/:id/retry", (request, response) => {
     currentStage: phase === "rendering" ? "等待重新生成" : "等待重新规划",
     error: undefined
   });
-  enqueueRetry(job.id);
+  enqueueRetry(job.id, providersFor(request));
   return response.status(202).json(queued);
 });
 
@@ -230,7 +234,7 @@ app.post("/api/jobs", (request, response) => {
     updatedAt: now
   };
   createJob(job);
-  enqueuePlanning(job.id);
+  enqueuePlanning(job.id, providersFor(request));
   return response.status(202).json(job);
 });
 
@@ -261,7 +265,7 @@ app.post("/api/jobs/:id/render", (request, response) => {
   const issues = inspectPlanForRender(job.plan!, materials, job.brief.duration);
   if (issues.length) return response.status(400).json({ message: "剧本预检未通过", issues });
   const queued = updateJob(job.id, { status: "queued", progress: 0, currentStage: "剧本已确认，等待生成", error: undefined });
-  enqueueRendering(job.id);
+  enqueueRendering(job.id, providersFor(request));
   return response.status(202).json(queued);
 });
 
@@ -299,7 +303,7 @@ app.post("/api/jobs/:id/retouch", async (request, response) => {
     }
     await archiveCurrentRevision(job, path.join(outputRoot, job.id));
     const queued = updateJob(job.id, { status: "queued", progress: 0, currentStage: "镜头微调已提交", plan, error: undefined });
-    enqueueRetouch(job.id, input.shotId, visualAction);
+    enqueueRetouch(job.id, input.shotId, visualAction, providersFor(request));
     return response.status(202).json(queued);
   } catch (error) {
     return response.status(400).json({ message: error instanceof Error ? error.message : "镜头微调提交失败" });

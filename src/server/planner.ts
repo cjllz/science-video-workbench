@@ -227,7 +227,7 @@ export async function createPlan(
     const llmPlan = await planWithLlm(brief, dataAssets, experience, config);
     if (llmPlan) return applyDataShots(applyVisualGuardrails({ ...llmPlan, experienceUsed: experience?.jobId }, brief), dataAssets);
   } catch (error) {
-    console.warn("LLM planner unavailable, using local planner:", error);
+    console.warn("LLM planner unavailable, using local planner");
   }
 
   const script = localScript(brief, dataAssets);
