@@ -1,0 +1,14 @@
+.git
+.gitignore
+.worktrees
+.env
+deploy/.env.production
+node_modules
+dist
+data
+output
+.artifacts
+.playwright-cli
+.qa
+*.log
+npm-debug.log*

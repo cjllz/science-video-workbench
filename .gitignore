@@ -3,6 +3,7 @@ dist/
 data/
 output/
 .env
+deploy/.env.production
 .superpowers/
 npm-debug.log*
 *.log
