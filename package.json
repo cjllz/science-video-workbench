@@ -19,7 +19,9 @@
     "setup:tts": "python -m pip install -r requirements.txt",
     "test": "vitest run",
     "test:watch": "vitest",
-    "qa:visual": "node scripts/visual-check.mjs"
+    "qa:visual": "node scripts/visual-check.mjs",
+    "docs:check": "node scripts/check-docs.mjs",
+    "verify": "npm run docs:check && npm test && npm run build"
   },
   "dependencies": {
     "csv-parse": "^7.0.1",
