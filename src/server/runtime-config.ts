@@ -16,7 +16,7 @@ const integerFromEnvironment = (fallback: number, minimum: number, maximum: numb
 );
 
 const runtimeSchema = z.object({
-  HOST: z.string().trim().min(1).default("0.0.0.0"),
+  HOST: z.string().trim().min(1).default("127.0.0.1"),
   PORT: integerFromEnvironment(8787, 1, 65_535),
   LAN_ACCESS_TOKEN: z.string().trim().optional(),
   MAX_CONCURRENT_RENDERS: integerFromEnvironment(1, 1, 8),
@@ -31,6 +31,8 @@ const urlFields = [
   "MATERIAL_PUBLIC_BASE_URL",
   "OUTPUT_PUBLIC_BASE_URL"
 ] as const;
+
+const modelFields = ["OPENAI_MODEL", "DEEPSEEK_MODEL", "ARK_TEXT_MODEL", "ARK_VIDEO_MODEL"] as const;
 
 function configurationError(field: string, detail: string): Error {
   return new Error(`Invalid runtime configuration: ${field}: ${detail}`);
@@ -72,6 +74,19 @@ export function readRuntimeConfig(environment: NodeJS.ProcessEnv): RuntimeConfig
   for (const field of urlFields) {
     const value = environment[field]?.trim();
     if (value && !isHttpUrl(value)) throw configurationError(field, "must be an HTTP or HTTPS URL");
+  }
+
+  for (const field of modelFields) {
+    const value = environment[field]?.trim();
+    if (value && value.length > 200) throw configurationError(field, "must be at most 200 characters");
+  }
+
+  const generatedShots = environment.ARK_MAX_GENERATED_SHOTS?.trim();
+  if (generatedShots) {
+    const value = Number(generatedShots);
+    if (!Number.isInteger(value) || value < 1 || value > 6) {
+      throw configurationError("ARK_MAX_GENERATED_SHOTS", "must be an integer from 1 through 6");
+    }
   }
 
   return Object.freeze({

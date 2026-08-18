@@ -14,6 +14,7 @@ describe("production runtime configuration", () => {
   });
 
   it("allows unauthenticated loopback development", () => {
+    expect(readRuntimeConfig({})).toMatchObject({ host: "127.0.0.1", port: 8787 });
     expect(readRuntimeConfig({ HOST: "127.0.0.1", PORT: "8787" })).toMatchObject({
       host: "127.0.0.1",
       port: 8787,
@@ -41,6 +42,8 @@ describe("production runtime configuration", () => {
     expect(() => readRuntimeConfig({ HOST: "127.0.0.1", FFMPEG_PATH: "bin/ffmpeg" })).toThrow("FFMPEG_PATH");
     expect(() => readRuntimeConfig({ HOST: "127.0.0.1", DEEPSEEK_BASE_URL: "file:///secret" })).toThrow("DEEPSEEK_BASE_URL");
     expect(() => readRuntimeConfig({ HOST: "127.0.0.1", VIDEO_PROVIDER_URL: "ftp://video.example" })).toThrow("VIDEO_PROVIDER_URL");
+    expect(() => readRuntimeConfig({ HOST: "127.0.0.1", ARK_MAX_GENERATED_SHOTS: "7" })).toThrow("ARK_MAX_GENERATED_SHOTS");
+    expect(() => readRuntimeConfig({ HOST: "127.0.0.1", OPENAI_MODEL: "m".repeat(201) })).toThrow("OPENAI_MODEL");
   });
 
   it("never includes secret values in validation errors", () => {
