@@ -99,6 +99,7 @@ npm run repo:check -- --staged
 - `.playwright-cli`
 - `.qa`
 - `.worktrees`
+- `.superpowers`
 
 以下文件不能被跟踪或提交：
 
