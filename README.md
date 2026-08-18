@@ -1,10 +1,33 @@
-# Science Video Studio
+# 科普视频工作台
 
-This repository contains a runnable science-video generation MVP. It accepts a topic or script and can produce a short narrated MP4 with captions and generated or programmatic shots.
+## 项目简介
 
-## Start
+科普视频工作台是一个可在局域网内多人使用的视频生成工作台。它可以从主题、关键词或现有脚本开始，生成带旁白、字幕、图表和镜头的短视频，并支持对已完成镜头进行局部返修和版本恢复。
 
-Requirements: Node.js 22.12 or newer and Python 3.10 or newer.
+正式部署面向受信任的局域网，使用一台 Linux 主机、一个应用容器、一个 Caddy HTTPS 反向代理和一份 SQLite 数据目录。它不是公网 SaaS，也不是多副本高可用服务。
+
+## 核心能力
+
+- 输入主题或导入 TXT、Markdown、DOCX 脚本。
+- 自动生成或手工编辑分镜、旁白、标题、时长和视觉方向。
+- 上传图片、视频、音频、CSV、XLSX，并用 `@变量名` 绑定到镜头。
+- 使用 Seedance 等外部服务，或在没有外部服务时使用本地脚本与动画回退。
+- 对完成视频执行本地重组、已有镜头编辑或单镜头重新生成。
+- 保存生成记录、反馈、镜头修订和可恢复的历史版本。
+- 登录用户可为当前会话填写独立的脚本 API 和视频 API；密钥不会写入浏览器或数据库。
+
+## 正式支持范围
+
+- Linux + Docker Compose v2，单台主机。
+- 一个 Node.js 应用容器和一个 Caddy 容器。
+- SQLite 单写实例，数据通过宿主机 bind mount 持久化。
+- 局域网客户端通过 Caddy 内部 HTTPS 访问。
+
+不支持公网直连、路由器端口转发、多应用副本、多个主机共享 SQLite、Kubernetes 或无停机备份。完整边界、前置检查和回滚要求见 [完整项目手册](docs/PROJECT-MANUAL.md)。
+
+## 快速本地体验
+
+要求 Node.js `22.12.0` 或更新版本、Python `3.10` 或更新版本：
 
 ```powershell
 npm install
@@ -12,68 +35,37 @@ npm run setup:tts
 npm run dev
 ```
 
-Open `http://127.0.0.1:5173`.
+打开 <http://127.0.0.1:5173>。这是本机开发地址；不要把它当作局域网生产入口，也不要在裸 HTTP 页面中填写个人 API 密钥。
 
-Production mode:
+生产构建可用：
 
 ```powershell
 npm run build
 npm start
 ```
 
-For every multi-user LAN deployment, use the Docker Compose stack with Caddy internal HTTPS, persistent storage, guarded backup/restore scripts, readiness checks, and graceful shutdown. Follow the canonical Chinese runbook: [Linux + Docker Compose deployment](docs/deployment/linux-docker.md).
+## 正式部署
 
-The supported production topology is exactly one application container and one Caddy container on one Linux host. Do not run multiple application replicas against the SQLite data directory and do not publish the service through router port forwarding.
+请先阅读 [完整项目手册中的管理员路线](docs/PROJECT-MANUAL.md#服务器管理员路线)，再按其中的 Linux、Docker、HTTPS、备份和验收步骤执行。不要从历史设计稿或实施计划复制部署命令。
 
-Open `http://127.0.0.1:8787` only for local development. Do not use the direct HTTP server for LAN sharing or enter personal API keys over HTTP. Local development defaults to `HOST=127.0.0.1` and does not require `LAN_ACCESS_TOKEN`.
+## 文档入口
 
-## Workflow
+- [普通用户路线](docs/PROJECT-MANUAL.md#普通用户路线)：从登录到生成、返修、版本恢复和个人 API。
+- [服务器管理员路线](docs/PROJECT-MANUAL.md#服务器管理员路线)：从服务器准备到上线、运维、备份恢复和升级。
+- [开发维护者路线](docs/PROJECT-MANUAL.md#开发维护者路线)：本地开发、代码结构、测试、构建和发布检查。
+- [内部历史资料](docs/internal/README.md)：设计规格和历史实施计划，不是当前部署说明。
 
-1. Enter a topic and keywords, or paste/import a TXT, Markdown, or DOCX script.
-2. Generate the script. The job stops at the storyboard instead of spending video-generation credits immediately.
-3. Edit shot order, duration, narration, headline, and visual direction.
-4. Upload image, video, audio, CSV, or XLSX materials. Every upload becomes an editable `@variable`.
-5. Insert variables into shots and choose their role, mode, and placement. Data bindings also select chart type and columns.
-6. Save the script, then explicitly confirm to run preflight and start Seedance/rendering.
-7. Review the MP4 and submit feedback. Accepted, highly rated videos become structural examples for similar future scripts.
-
-After a video is complete, the shot-retouch timeline treats every item as a continuous time segment. Editing narration, subtitles, chart settings, overlay placement, or a material's relative start/end time uses `Recompose` and does not call Seedance. Changing people, actions, or scene composition uses `Regenerate shot`, which calls Seedance only for the selected segment and reuses cached provider clips for every unchanged shot. The previous MP4, captions, poster, plan, and provider clips are archived before processing and can be restored from the version strip.
-
-Images and videos use `exact overlay` by default, preserving the uploaded pixels in local post-production. `AI reference`, `first frame`, and `last frame` send material to Seedance and therefore require a publicly reachable HTTPS material URL. Configure `MATERIAL_PUBLIC_BASE_URL` to an origin that exposes the same `/materials/...` paths; the confirmation preflight blocks inaccessible AI references. CSV/XLSX values are rendered locally and are never redrawn by the video model.
-
-## Completed-shot material editing
-
-The shot retouch workspace supports adding, uploading, replacing, and removing material bindings after a video is complete:
-
-- `Apply and recompose` preserves the generated shot and locally applies exact image/video overlays, uploaded data charts, narration, and subtitles.
-- `Edit existing shot` sends the selected continuous provider clip to Seedance as `reference_video`, together with any `AI reference` materials.
-- `Regenerate shot` creates the selected shot again without using the previous video.
-
-Ark result URLs are recorded for 23 hours after generation so a new shot can be edited directly. For durable editing, configure `OUTPUT_PUBLIC_BASE_URL` as a public HTTPS origin that exposes `/outputs/...`; production deployments should serve that origin from TOS or equivalent object storage. Uploaded AI-reference materials likewise require `MATERIAL_PUBLIC_BASE_URL`. Exact overlays and data charts stay local and do not require public storage.
-
-## Configuration
-
-`HOST` controls the server listen address and defaults to `127.0.0.1` for safe local development. Set it to `0.0.0.0` only when intentionally sharing the workbench and configuring `LAN_ACCESS_TOKEN`.
-
-`LAN_ACCESS_TOKEN` enables the shared-password LAN login. It is stored only in the server environment; the browser receives a short-lived HttpOnly session cookie. `MAX_CONCURRENT_RENDERS` limits simultaneous provider, TTS, ffmpeg, and retouch work and defaults to `1`.
-
-The planner supports an OpenAI-compatible `chat/completions` endpoint through `OPENAI_API_KEY`, `OPENAI_BASE_URL`, and `OPENAI_MODEL`.
-
-Topic-only planning can use a direct DeepSeek-compatible endpoint through `DEEPSEEK_API_KEY`, `DEEPSEEK_BASE_URL`, and `DEEPSEEK_MODEL`; this takes priority over Ark text planning. If no direct planner is configured, an existing `ARK_API_KEY` can use `ARK_TEXT_MODEL` with thinking disabled. Video generation uses `ARK_VIDEO_MODEL` and `ARK_MAX_GENERATED_SHOTS`; the default video model is `doubao-seedance-2-0-mini-260615`. Its native audio is disabled because the workbench adds controlled narration during final composition. Without external providers, the application falls back to local planning and animated information cards.
-
-## Personal API settings on a LAN
-
-Authenticated users can open **API settings** to supply separate script-planning and Ark Seedance credentials for the current browser session. Personal keys are kept only in server memory, are never returned to the browser after submission, and are cleared on logout, session expiry, or server restart. A section left on **Server default** uses the matching administrator environment variables; if neither is configured, the existing local fallback is used.
-
-Each planning, rendering, retry, or retouch command captures the effective settings when that command is submitted. Changing or clearing settings does not alter work that is already queued or running. A retry uses the current settings of the browser session that submits the retry, even when the shared job was originally created from another session.
-
-The generic `VIDEO_PROVIDER_URL` HTTP adapter remains administrator-managed and cannot be selected in personal settings. Personal settings require `LAN_ACCESS_TOKEN`; authentication-disabled local development continues to use only administrator configuration and local fallbacks. Keys are not stored in browser storage, SQLite, jobs, events, generated files, or API responses.
-
-## Verification
+## 开发验证
 
 ```powershell
+npm run docs:check
 npm test
 npm run build
+npm run verify
 ```
 
-Medical content still requires authoritative citations and human review before publication.
+`npm run verify` 会依次执行文档检查、测试和生产构建。Docker 镜像构建、Caddy 证书和真实局域网功能必须在目标 Linux 主机上额外验收。
+
+## 发布前提醒
+
+医疗、健康和生命科学内容必须使用权威来源，并在发布前由具备相应知识或资质的人员复核事实、引用、图表和表述。工具生成结果不能替代专业审核。

@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import process from "node:process";
 
@@ -32,14 +32,15 @@ function slugHeadings(markdown, relativeFile, validateStructure = true) {
   const slugs = new Set();
   const counts = new Map();
   let previousLevel = 0;
-  let fence = false;
+  let fenceMarker;
 
   for (const [index, line] of markdown.split(/\r?\n/).entries()) {
-    if (/^\s*```/.test(line)) {
-      fence = !fence;
+    const fence = /^\s*(`{3,}|~{3,})/.exec(line)?.[1];
+    if (fence && (!fenceMarker || fence[0] === fenceMarker)) {
+      fenceMarker = fenceMarker ? undefined : fence[0];
       continue;
     }
-    if (fence) continue;
+    if (fenceMarker) continue;
     const match = /^(#{1,6})\s+(.+?)\s*#?\s*$/.exec(line);
     if (!match) continue;
     const level = match[1].length;
@@ -59,7 +60,7 @@ function slugHeadings(markdown, relativeFile, validateStructure = true) {
     slugs.add(count === 0 ? base : `${base}-${count}`);
   }
 
-  if (validateStructure && fence) fail(`${relativeFile} 存在未闭合的代码围栏`);
+  if (validateStructure && fenceMarker) fail(`${relativeFile} 存在未闭合的代码围栏`);
   return slugs;
 }
 
@@ -70,7 +71,15 @@ function verifyLinks(absoluteFile, markdown, headingsByFile) {
     const rawTarget = match[1].replace(/^<|>$/g, "");
     if (/^(?:https?:|mailto:|data:)/i.test(rawTarget)) continue;
     const [rawPath, fragment] = rawTarget.split("#", 2);
-    const decodedPath = decodeURIComponent(rawPath || "");
+    let decodedPath;
+    let decodedFragment;
+    try {
+      decodedPath = decodeURIComponent(rawPath || "");
+      decodedFragment = fragment ? decodeURIComponent(fragment).toLowerCase() : undefined;
+    } catch {
+      fail(`${relativeFile} 包含无效 URL 编码的本地链接: ${rawTarget}`);
+      continue;
+    }
     const targetFile = decodedPath
       ? path.resolve(path.dirname(absoluteFile), decodedPath)
       : absoluteFile;
@@ -81,7 +90,7 @@ function verifyLinks(absoluteFile, markdown, headingsByFile) {
     if (fragment && targetFile.endsWith(".md")) {
       const normalized = path.normalize(targetFile);
       const targetHeadings = headingsByFile.get(normalized);
-      if (!targetHeadings?.has(decodeURIComponent(fragment).toLowerCase())) {
+      if (!targetHeadings?.has(decodedFragment)) {
         fail(`${relativeFile} 包含不存在的标题锚点: ${rawTarget}`);
       }
     }
@@ -89,7 +98,8 @@ function verifyLinks(absoluteFile, markdown, headingsByFile) {
 }
 
 for (const required of requiredFiles) {
-  if (!existsSync(path.join(root, required))) fail(`缺少正式文档: ${required}`);
+  const absolute = path.join(root, required);
+  if (!existsSync(absolute) || !statSync(absolute).isFile()) fail(`缺少正式文档: ${required}`);
 }
 for (const forbidden of forbiddenPaths) {
   if (existsSync(path.join(root, forbidden))) fail(`仍存在已废弃文档路径: ${forbidden}`);
