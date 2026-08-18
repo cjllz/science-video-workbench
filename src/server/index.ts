@@ -16,9 +16,9 @@ import { classifyMaterial, storeMaterialUpload } from "./materials.js";
 import { materialRoot, outputRoot, projectRoot } from "./paths.js";
 import { enqueuePlanning, enqueueRendering, enqueueRetouch, enqueueRetry } from "./pipeline.js";
 import { inspectPlanForRender } from "./preflight.js";
-import { getVideoProviderStatus } from "./providers/video.js";
 import { loadProviderAssetManifest, selectReferenceVideoUrl } from "./provider-assets.js";
-import { getPlannerStatus } from "./planner.js";
+import { authSessionForRequest, registerProviderSettingsRoutes } from "./provider-settings-http.js";
+import { createProviderSettingsStore, resolveProviderConfig } from "./provider-settings.js";
 import { parseScriptImport } from "./script-imports.js";
 import { applyShotRetouch, assertRetouchable, assertVideoEditSource, normalizeRetouchVisualAction } from "./retouch.js";
 import { archiveCurrentRevision, restoreArchivedRevision } from "./revisions.js";
@@ -33,6 +33,7 @@ const app = express();
 const port = Number(process.env.PORT || 8787);
 const host = process.env.HOST || "0.0.0.0";
 const lanAuth = createLanAuth(process.env.LAN_ACCESS_TOKEN);
+const providerSettings = createProviderSettingsStore();
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 10 * 1024 * 1024, files: 1 },
@@ -68,8 +69,9 @@ fs.mkdirSync(materialRoot, { recursive: true });
 
 app.use(express.json({ limit: "1mb" }));
 app.get("/api/health", (_request, response) => response.json({ ok: true }));
-registerLanAuthRoutes(app, lanAuth);
+registerLanAuthRoutes(app, lanAuth, providerSettings.clear);
 app.use("/api", requireLanAuth(lanAuth));
+registerProviderSettingsRoutes(app, lanAuth, providerSettings, process.env);
 app.use("/outputs", requireLanAuth(lanAuth), express.static(outputRoot, { maxAge: "1h", fallthrough: false }));
 app.use("/materials", requireLanAuth(lanAuth), express.static(materialRoot, { maxAge: "1h", fallthrough: false }));
 
@@ -142,7 +144,11 @@ const feedbackSchema = z.object({
 
 app.get("/api/styles", (_request, response) => response.json(VIDEO_STYLES));
 app.get("/api/stats", (_request, response) => response.json(getLearningStats()));
-app.get("/api/provider", (_request, response) => response.json({ ...getVideoProviderStatus(), planner: getPlannerStatus() }));
+app.get("/api/provider", (request, response) => {
+  const session = authSessionForRequest(request, lanAuth);
+  const resolved = resolveProviderConfig(session ? providerSettings.get(session.id) : undefined, process.env);
+  return response.json({ ...resolved.view.video, planner: resolved.view.script });
+});
 app.post("/api/script-imports", scriptUpload.single("file"), async (request, response) => {
   if (!request.file) return response.status(400).json({ message: "请选择剧本文件" });
   try {
