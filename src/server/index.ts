@@ -14,7 +14,7 @@ import { assertPlanEditable, assertRenderable } from "./job-lifecycle.js";
 import { markInterruptedJobsFailed, retryPhase } from "./job-recovery.js";
 import { classifyMaterial, storeMaterialUpload } from "./materials.js";
 import { materialRoot, outputRoot, projectRoot } from "./paths.js";
-import { enqueuePlanning, enqueueRendering, enqueueRetouch, enqueueRetry } from "./pipeline.js";
+import { configureRenderConcurrency, enqueuePlanning, enqueueRendering, enqueueRetouch, enqueueRetry } from "./pipeline.js";
 import { inspectPlanForRender } from "./preflight.js";
 import { loadProviderAssetManifest, selectReferenceVideoUrl } from "./provider-assets.js";
 import { authSessionForRequest, registerProviderSettingsRoutes } from "./provider-settings-http.js";
@@ -22,6 +22,7 @@ import { createProviderSettingsStore, resolveProviderConfig, type OperationProvi
 import { parseScriptImport } from "./script-imports.js";
 import { applyShotRetouch, assertRetouchable, assertVideoEditSource, normalizeRetouchVisualAction } from "./retouch.js";
 import { archiveCurrentRevision, restoreArchivedRevision } from "./revisions.js";
+import { readRuntimeConfig } from "./runtime-config.js";
 
 try {
   loadEnvFile();
@@ -29,11 +30,12 @@ try {
   // Environment variables can also be supplied by the hosting platform.
 }
 
+const runtimeConfig = readRuntimeConfig(process.env);
 const app = express();
-const port = Number(process.env.PORT || 8787);
-const host = process.env.HOST || "0.0.0.0";
-const lanAuth = createLanAuth(process.env.LAN_ACCESS_TOKEN);
+const lanAuth = createLanAuth(runtimeConfig.lanAccessToken);
 const providerSettings = createProviderSettingsStore();
+configureRenderConcurrency(runtimeConfig.maxConcurrentRenders);
+if (runtimeConfig.trustProxy === 1) app.set("trust proxy", 1);
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 10 * 1024 * 1024, files: 1 },
@@ -355,8 +357,8 @@ app.use((error: unknown, _request: express.Request, response: express.Response, 
 
 const interruptedJobCount = markInterruptedJobsFailed();
 
-app.listen(port, host, () => {
-  console.log(`Science video API listening on http://${host}:${port}`);
+app.listen(runtimeConfig.port, runtimeConfig.host, () => {
+  console.log(`Science video API listening on http://${runtimeConfig.host}:${runtimeConfig.port}`);
   if (interruptedJobCount) console.warn(`Marked ${interruptedJobCount} interrupted job(s) as failed after restart`);
   if (!lanAuth.enabled) console.warn("LAN_ACCESS_TOKEN is not configured; LAN authentication is disabled");
 });

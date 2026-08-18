@@ -14,7 +14,12 @@ import { selectGeneratedShotIndices } from "./shot-policy.js";
 import { loadCachedGeneratedAssets } from "./revisions.js";
 
 const running = new Set<string>();
-const renderConcurrency = createConcurrencyGate(Number(process.env.MAX_CONCURRENT_RENDERS || 1));
+let renderConcurrency = createConcurrencyGate(1);
+
+export function configureRenderConcurrency(maxConcurrentRenders: number): void {
+  if (running.size) throw new Error("Cannot reconfigure render concurrency while work is active");
+  renderConcurrency = createConcurrencyGate(maxConcurrentRenders);
+}
 
 export function captureOperationProviderConfig(providers: OperationProviderConfig): OperationProviderConfig {
   return structuredClone(providers);
