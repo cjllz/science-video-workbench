@@ -68,6 +68,14 @@ The planner supports an OpenAI-compatible `chat/completions` endpoint through `O
 
 Topic-only planning can use a direct DeepSeek-compatible endpoint through `DEEPSEEK_API_KEY`, `DEEPSEEK_BASE_URL`, and `DEEPSEEK_MODEL`; this takes priority over Ark text planning. If no direct planner is configured, an existing `ARK_API_KEY` can use `ARK_TEXT_MODEL` with thinking disabled. Video generation uses `ARK_VIDEO_MODEL` and `ARK_MAX_GENERATED_SHOTS`; the default video model is `doubao-seedance-2-0-mini-260615`. Its native audio is disabled because the workbench adds controlled narration during final composition. Without external providers, the application falls back to local planning and animated information cards.
 
+## Personal API settings on a LAN
+
+Authenticated users can open **API settings** to supply separate script-planning and Ark Seedance credentials for the current browser session. Personal keys are kept only in server memory, are never returned to the browser after submission, and are cleared on logout, session expiry, or server restart. A section left on **Server default** uses the matching administrator environment variables; if neither is configured, the existing local fallback is used.
+
+Each planning, rendering, retry, or retouch command captures the effective settings when that command is submitted. Changing or clearing settings does not alter work that is already queued or running. A retry uses the current settings of the browser session that submits the retry, even when the shared job was originally created from another session.
+
+The generic `VIDEO_PROVIDER_URL` HTTP adapter remains administrator-managed and cannot be selected in personal settings. Personal settings require `LAN_ACCESS_TOKEN`; authentication-disabled local development continues to use only administrator configuration and local fallbacks. Keys are not stored in browser storage, SQLite, jobs, events, generated files, or API responses.
+
 ## Verification
 
 ```powershell
