@@ -9,11 +9,11 @@ import { VIDEO_STYLES, type ShotRetouchInput, type VideoJob, type VideoPlan } fr
 import { createLanAuth } from "./auth.js";
 import { registerLanAuthRoutes, requireLanAuth } from "./auth-http.js";
 import { parseDataAsset } from "./data-assets.js";
-import { addFeedback, createDataAsset, createJob, getDataAssets, getJob, getJobRevision, getLearningStats, getMaterialAssets, listJobRevisions, listJobs, listMaterialAssets, recordEvent, updateJob, updateMaterialVariable } from "./db.js";
+import { addFeedback, checkDatabase, createDataAsset, createJob, getDataAssets, getJob, getJobRevision, getLearningStats, getMaterialAssets, listJobRevisions, listJobs, listMaterialAssets, recordEvent, updateJob, updateMaterialVariable } from "./db.js";
 import { assertPlanEditable, assertRenderable } from "./job-lifecycle.js";
 import { markInterruptedJobsFailed, retryPhase } from "./job-recovery.js";
 import { classifyMaterial, storeMaterialUpload } from "./materials.js";
-import { materialRoot, outputRoot, projectRoot } from "./paths.js";
+import { dataRoot, materialRoot, outputRoot, projectRoot } from "./paths.js";
 import { configureRenderConcurrency, enqueuePlanning, enqueueRendering, enqueueRetouch, enqueueRetry } from "./pipeline.js";
 import { inspectPlanForRender } from "./preflight.js";
 import { loadProviderAssetManifest, selectReferenceVideoUrl } from "./provider-assets.js";
@@ -23,6 +23,8 @@ import { parseScriptImport } from "./script-imports.js";
 import { applyShotRetouch, assertRetouchable, assertVideoEditSource, normalizeRetouchVisualAction } from "./retouch.js";
 import { archiveCurrentRevision, restoreArchivedRevision } from "./revisions.js";
 import { readRuntimeConfig } from "./runtime-config.js";
+import { createDeploymentReadiness } from "./readiness.js";
+import { getFfmpegPath } from "./tooling.js";
 
 try {
   loadEnvFile();
@@ -36,6 +38,11 @@ const lanAuth = createLanAuth(runtimeConfig.lanAccessToken);
 const providerSettings = createProviderSettingsStore();
 configureRenderConcurrency(runtimeConfig.maxConcurrentRenders);
 if (runtimeConfig.trustProxy === 1) app.set("trust proxy", 1);
+const readiness = createDeploymentReadiness({
+  database: checkDatabase,
+  dataDirectory: dataRoot,
+  ffmpegPath: getFfmpegPath()
+});
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 10 * 1024 * 1024, files: 1 },
@@ -71,6 +78,10 @@ fs.mkdirSync(materialRoot, { recursive: true });
 
 app.use(express.json({ limit: "1mb" }));
 app.get("/api/health", (_request, response) => response.json({ ok: true }));
+app.get("/api/ready", async (_request, response) => {
+  const result = await readiness.inspect();
+  return response.status(result.ok ? 200 : 503).json(result);
+});
 registerLanAuthRoutes(app, lanAuth, providerSettings.clear);
 app.use("/api", requireLanAuth(lanAuth));
 registerProviderSettingsRoutes(app, lanAuth, providerSettings, process.env);

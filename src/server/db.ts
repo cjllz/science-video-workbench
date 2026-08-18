@@ -104,6 +104,10 @@ type JobRow = {
   updated_at: string;
 };
 
+export function checkDatabase(): void {
+  db.prepare("SELECT 1").get();
+}
+
 function rowToJob(row: JobRow): VideoJob {
   return {
     id: row.id,
