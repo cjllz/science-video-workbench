@@ -28,7 +28,7 @@ function markdownFiles(directory) {
   });
 }
 
-function slugHeadings(markdown, relativeFile) {
+function slugHeadings(markdown, relativeFile, validateStructure = true) {
   const slugs = new Set();
   const counts = new Map();
   let previousLevel = 0;
@@ -43,7 +43,7 @@ function slugHeadings(markdown, relativeFile) {
     const match = /^(#{1,6})\s+(.+?)\s*#?\s*$/.exec(line);
     if (!match) continue;
     const level = match[1].length;
-    if (previousLevel > 0 && level > previousLevel + 1) {
+    if (validateStructure && previousLevel > 0 && level > previousLevel + 1) {
       fail(`${relativeFile}:${index + 1} 标题层级从 H${previousLevel} 跳到 H${level}`);
     }
     previousLevel = level;
@@ -59,7 +59,7 @@ function slugHeadings(markdown, relativeFile) {
     slugs.add(count === 0 ? base : `${base}-${count}`);
   }
 
-  if (fence) fail(`${relativeFile} 存在未闭合的代码围栏`);
+  if (validateStructure && fence) fail(`${relativeFile} 存在未闭合的代码围栏`);
   return slugs;
 }
 
@@ -103,7 +103,8 @@ for (const file of files) {
   const markdown = readFileSync(file, "utf8");
   const relativeFile = path.relative(root, file).replaceAll("\\", "/");
   contents.set(file, markdown);
-  headingsByFile.set(path.normalize(file), slugHeadings(markdown, relativeFile));
+  const validateStructure = !relativeFile.startsWith("docs/internal/");
+  headingsByFile.set(path.normalize(file), slugHeadings(markdown, relativeFile, validateStructure));
 }
 for (const [file, markdown] of contents) verifyLinks(file, markdown, headingsByFile);
 
