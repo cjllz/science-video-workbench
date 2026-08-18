@@ -69,6 +69,8 @@ manifest_path="$archive_path.manifest.json"
 archive_partial="$backup_dir/.$archive_name.partial"
 checksum_partial="$backup_dir/.$archive_name.sha256.partial"
 manifest_partial="$backup_dir/.$archive_name.manifest.json.partial"
+[[ ! -e "$archive_path" && ! -e "$checksum_path" && ! -e "$manifest_path" ]] \
+  || die "backup destination already exists: $archive_name"
 
 tar -C "$data_dir" -czf "$archive_partial" .
 archive_hash="$(sha256sum "$archive_partial" | awk '{print $1}')"

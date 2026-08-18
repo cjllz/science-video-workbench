@@ -10,7 +10,7 @@ FROM node:22-bookworm-slim AS production-dependencies
 
 WORKDIR /app
 COPY package.json package-lock.json ./
-RUN npm ci --omit=dev --omit=optional && npm cache clean --force
+RUN npm ci --omit=dev && npm cache clean --force
 
 FROM node:22-bookworm-slim AS runtime
 

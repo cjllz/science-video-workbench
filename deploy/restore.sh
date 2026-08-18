@@ -97,7 +97,12 @@ candidate_dir="$(mktemp -d "$data_parent/.restore-candidate.XXXXXX")"
 tar -xzf "$archive_path" -C "$candidate_dir"
 chown -R 10001:10001 "$candidate_dir"
 
-compose_cmd run --rm --no-deps -v "$candidate_dir:/app/data" app npm run maintenance -- validate-data
+app_image="$(compose_cmd images -q app | head -n 1)"
+[[ -n "$app_image" ]] || die "app image is unavailable for restore validation"
+docker run --rm --network none --read-only --tmpfs /tmp:rw,noexec,nosuid,size=256m \
+  --security-opt no-new-privileges:true --user 10001:10001 \
+  --volume "$candidate_dir:/app/data" \
+  "$app_image" npm run maintenance -- validate-data
 
 rollback_dir="$data_parent/.restore-rollback-$timestamp"
 [[ ! -e "$rollback_dir" ]] || die "rollback directory already exists"

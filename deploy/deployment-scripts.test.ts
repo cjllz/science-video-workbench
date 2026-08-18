@@ -25,6 +25,12 @@ afterEach(() => {
 });
 
 describe("deployment script safety contracts", () => {
+  it("keeps production optional dependencies required by sharp", () => {
+    const dockerfile = readFileSync(path.join(projectRoot, "Dockerfile"), "utf8");
+    expect(dockerfile).toContain("npm ci --omit=dev");
+    expect(dockerfile).not.toContain("--omit=optional");
+  });
+
   it("contains locking, idle checks, restart cleanup, and partial archives", () => {
     const backup = readFileSync(path.join(projectRoot, "deploy", "backup.sh"), "utf8");
     const library = readFileSync(path.join(projectRoot, "deploy", "lib.sh"), "utf8");
