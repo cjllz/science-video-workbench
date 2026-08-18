@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import {
   Check, ChevronRight, Clock3, Download, Film, History, LoaderCircle,
-  LockKeyhole, LogIn, LogOut, MessageSquareText, Play, Sparkles, Table2, ThumbsDown, ThumbsUp, Upload, WandSparkles, X
+  LockKeyhole, LogIn, LogOut, MessageSquareText, Play, Settings2, Sparkles, Table2, ThumbsDown, ThumbsUp, Upload, WandSparkles, X
 } from "lucide-react";
 import { VIDEO_STYLES, type DataAsset, type DataCell, type MaterialAsset, type VideoBrief, type VideoJob } from "../shared/video";
+import type { ProviderSettingsView } from "../shared/provider-settings";
 import { api, type LearningStats, type ProviderStatus } from "./api";
+import { ProviderSettingsDialog } from "./ProviderSettingsDialog";
 import { ScriptWorkspace } from "./ScriptWorkspace";
 import { RetouchWorkspace } from "./RetouchWorkspace";
 
@@ -393,6 +395,8 @@ export function App() {
   const [materials, setMaterials] = useState<MaterialAsset[]>([]);
   const [error, setError] = useState("");
   const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const [providerSettings, setProviderSettings] = useState<ProviderSettingsView>();
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   const generating = selected && !["complete", "failed", "awaiting_confirmation"].includes(selected.status);
 
@@ -408,14 +412,21 @@ export function App() {
 
   useEffect(() => {
     if (authState !== "authenticated") return;
-    Promise.all([api.listJobs(), api.getStats(), api.getProvider(), api.listMaterials()]).then(([loadedJobs, loadedStats, loadedProvider, loadedMaterials]) => {
+    Promise.all([
+      api.listJobs(),
+      api.getStats(),
+      api.getProvider(),
+      api.listMaterials(),
+      authRequired ? api.getProviderSettings() : Promise.resolve(undefined)
+    ]).then(([loadedJobs, loadedStats, loadedProvider, loadedMaterials, loadedSettings]) => {
       setJobs(loadedJobs);
       setStats(loadedStats);
       setProvider(loadedProvider);
       setMaterials(loadedMaterials);
+      setProviderSettings(loadedSettings);
       if (loadedJobs[0]) setSelected(loadedJobs[0]);
     }).catch((reason) => setError(reason.message));
-  }, [authState]);
+  }, [authRequired, authState]);
 
   useEffect(() => {
     if (authState !== "authenticated" || !selected || ["complete", "failed", "awaiting_confirmation"].includes(selected.status)) return;
@@ -455,7 +466,16 @@ export function App() {
     setSelected(undefined);
     setMaterials([]);
     setFeedbackOpen(false);
+    setProviderSettings(undefined);
+    setSettingsOpen(false);
     setAuthState("unauthenticated");
+  }
+
+  function providerSettingsSaved(view: ProviderSettingsView) {
+    setProviderSettings(view);
+    void api.getProvider().then(setProvider).catch((reason) => {
+      setError(reason instanceof Error ? reason.message : "服务状态刷新失败");
+    });
   }
 
   async function create(brief: VideoBrief) {
@@ -521,6 +541,7 @@ export function App() {
         <div className="brand-mark"><Sparkles size={19} /></div>
         <div className="brand-copy"><strong>科普视频工作台</strong><span>自动生成 · 经验沉淀</span></div>
         <div className={`system-status ${provider.connected ? "connected" : ""}`}><i /> {providerLabel(provider)}</div>
+        {authRequired && <button className="topbar-icon-button" type="button" title="API 设置" aria-label="API 设置" disabled={!providerSettings} onClick={() => setSettingsOpen(true)}><Settings2 size={17} /></button>}
         {authRequired && <button className="topbar-icon-button" type="button" title="退出局域网会话" aria-label="退出局域网会话" onClick={logout}><LogOut size={17} /></button>}
       </header>
       {error && <div className="global-error">{error}<button onClick={() => setError("")}>关闭</button></div>}
@@ -530,6 +551,7 @@ export function App() {
         <HistoryPanel jobs={jobs} selectedId={selected?.id} stats={stats} onSelect={setSelected} />
       </main>
       {feedbackOpen && selected && <FeedbackDialog job={selected} onClose={() => setFeedbackOpen(false)} onSaved={(nextStats) => { setStats(nextStats); setFeedbackOpen(false); }} />}
+      {settingsOpen && providerSettings && <ProviderSettingsDialog initial={providerSettings} onClose={() => setSettingsOpen(false)} onSaved={providerSettingsSaved} />}
     </div>
   );
 }
