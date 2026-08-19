@@ -13,8 +13,11 @@ function rule(selector: string) {
 
 describe("desktop workspace scrolling contract", () => {
   it("constrains the authenticated shell and workspace to the viewport", () => {
-    expect(rule(".app-shell:not(.login-shell)")).toMatch(/height:\s*100dvh/);
-    expect(rule(".app-shell:not(.login-shell)")).toMatch(/overflow:\s*hidden/);
+    const shell = rule(".app-shell:not(.login-shell)");
+    expect(shell).toMatch(/height:\s*100dvh/);
+    expect(shell).toMatch(/position:\s*fixed/);
+    expect(shell).toMatch(/inset:\s*0/);
+    expect(shell).toMatch(/overflow:\s*hidden/);
     expect(rule(".workspace")).toMatch(/min-height:\s*0/);
     expect(rule(".workspace")).toMatch(/overflow:\s*hidden/);
   });
@@ -29,6 +32,7 @@ describe("desktop workspace scrolling contract", () => {
   it("restores document flow at the existing tablet breakpoint", () => {
     const tabletBlock = stylesheet.match(/@media \(max-width:\s*1180px\)\s*\{([\s\S]*?)\n\}/)?.[1] ?? "";
     expect(tabletBlock).toMatch(/\.app-shell:not\(\.login-shell\)[^{]*\{[^}]*height:\s*auto/);
+    expect(tabletBlock).toMatch(/\.app-shell:not\(\.login-shell\)[^{]*\{[^}]*position:\s*static/);
     expect(tabletBlock).toMatch(/\.workspace\s*\{[^}]*overflow:\s*visible/);
     expect(tabletBlock).toMatch(/\.brief-panel, \.preview-panel, \.history-panel\s*\{[^}]*overflow-y:\s*visible/);
   });

@@ -24,6 +24,8 @@ button { cursor: pointer; }
   height: 100vh;
   height: 100dvh;
   min-height: 0;
+  position: fixed;
+  inset: 0;
   display: grid;
   grid-template-rows: auto auto minmax(0, 1fr);
   overflow: hidden;
@@ -347,7 +349,7 @@ button { cursor: pointer; }
 .revision-strip button { padding: 0 8px; border: 1px solid var(--line); border-radius: 3px; background: #fff; color: var(--ink); }
 
 @media (max-width: 1180px) {
-  .app-shell:not(.login-shell) { height: auto; min-height: 100vh; display: block; overflow: visible; }
+  .app-shell:not(.login-shell) { height: auto; min-height: 100vh; position: static; inset: auto; display: block; overflow: visible; }
   .workspace { height: auto; min-height: calc(100vh - 66px); overflow: visible; grid-template-columns: 350px 1fr; }
   .brief-panel, .preview-panel, .history-panel { min-height: auto; overflow-x: visible; overflow-y: visible; overscroll-behavior-y: auto; scrollbar-gutter: auto; }
   .workspace:has(.script-workspace) { grid-template-columns: 320px 1fr; }
