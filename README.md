@@ -23,7 +23,7 @@
 - SQLite 单写实例，数据通过宿主机 bind mount 持久化。
 - 局域网客户端通过 Caddy 内部 HTTPS 访问。
 
-不支持公网直连、路由器端口转发、多应用副本、多个主机共享 SQLite、Kubernetes 或无停机备份。完整边界、前置检查和回滚要求见 [完整项目手册](docs/PROJECT-MANUAL.md)。
+不支持公网直连、路由器端口转发、多应用副本、多个主机共享 SQLite、Kubernetes 或无停机备份。完整边界、前置检查和回滚要求见 [部署运维手册](docs/DEPLOYMENT.md)。
 
 ## 快速本地体验
 
@@ -46,14 +46,14 @@ npm start
 
 ## 正式部署
 
-请先阅读 [完整项目手册中的管理员路线](docs/PROJECT-MANUAL.md#服务器管理员路线)，再按其中的 Linux、Docker、HTTPS、备份和验收步骤执行。不要从历史设计稿或实施计划复制部署命令。
+从 [部署运维手册](docs/DEPLOYMENT.md) 第 1 章开始，依次完成 Linux 主机、生产配置、Docker Compose、HTTPS、上线验收和备份恢复。不要从内部历史规格或实施计划复制部署命令。
 
 ## 文档入口
 
-- [普通用户路线](docs/PROJECT-MANUAL.md#普通用户路线)：从登录到生成、返修、版本恢复和个人 API。
-- [服务器管理员路线](docs/PROJECT-MANUAL.md#服务器管理员路线)：从服务器准备到上线、运维、备份恢复和升级。
-- [开发维护者路线](docs/PROJECT-MANUAL.md#开发维护者路线)：本地开发、代码结构、测试、构建和发布检查。
-- [内部历史资料](docs/internal/README.md)：设计规格和历史实施计划，不是当前部署说明。
+- [详细使用说明](docs/USER-GUIDE.md)：登录、创建视频、剧本和素材融合、个人 API、生成、返修与常见问题。
+- [开发技术文档](docs/DEVELOPMENT.md)：架构、代码模块、配置、数据、接口、测试、构建和提交规范。
+- [部署运维手册](docs/DEPLOYMENT.md)：Linux、Docker Compose、HTTPS、生产配置、备份恢复、升级回滚和故障处理。
+- [内部历史资料](docs/internal/README.md)：历史设计规格和实施计划，不是当前操作依据。
 
 ## 开发验证
 
