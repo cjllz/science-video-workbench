@@ -6,6 +6,7 @@ const root = process.cwd();
 const failures = [];
 const officialFiles = [
   "README.md",
+  "CHANGELOG.md",
   "docs/USER-GUIDE.md",
   "docs/DEVELOPMENT.md",
   "docs/DEPLOYMENT.md"

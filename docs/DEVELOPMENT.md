@@ -444,6 +444,8 @@ SQLite 使用单进程访问。应用启动会以幂等方式初始化表，并�
 - `src/server/*.test.ts`：认证、配置、数据库、任务、材料、供应商、就绪和停机行为。
 - `src/client/*.test.ts`：表单和素材绑定的纯逻辑。
 - `deploy/deployment-scripts.test.ts`：部署脚本的安全拒绝条件和静态契约。
+- `release/release-scripts.test.ts`：安装、配置、升级、卸载和发布流水线契约。
+- `scripts/build-release.test.ts`：正式安装包白名单、版本、权限和 SHA-256 契约。
 - `scripts/check-docs.mjs`：文档结构、标题、代码围栏、本地链接和正式占位内容。
 
 `vitest.config.ts` 继承应用的 Vite 配置，并排除 `.worktrees/**`；隔离工作区可能保留其他分支的旧测试，不能把它们重复计入当前分支验证。
@@ -466,6 +468,26 @@ npm run verify
 
 ## 12. 发布验证、文档同步与提交规范
 
+### 正式发布物
+
+源码仓库不是交给普通用户安装的程序。每个正式版本由同一 Git 标签生成两类不可变交付物：
+
+- `ghcr.io/cjllz/science-video-workbench:<版本>`：Linux/AMD64 应用容器镜像；
+- `science-video-workbench-v<版本>-online-linux-amd64.tar.gz`：只包含 Compose、Caddy、配置器和运维脚本的服务器安装包，同时发布独立 `.sha256` 和 `SHA256SUMS`。
+
+安装包通过 `scripts/build-release.mjs` 的显式白名单组装，不复制整个仓库。源码、`node_modules`、`dist`、`.git`、开发计划、数据、媒体、日志、真实环境文件和密钥都不会进入安装包。输出只写入已忽略的 `.artifacts/releases/`；脚本拒绝覆盖同名文件，避免误把旧产物当成本次发布。
+
+标签推送触发 `.github/workflows/release.yml`。流水线要求 `vMAJOR.MINOR.PATCH` 标签与 `package.json` 版本完全一致，依次执行 `npm ci`、`npm run verify`、`npm audit --omit=dev`，然后构建并推送 Linux/AMD64 镜像，最后创建 GitHub Release 并上传安装包和校验文件。任一步失败都不会创建完整正式版本。
+
+发布新版本时：
+
+1. 按语义化版本更新 `package.json` 和 `package-lock.json`。
+2. 在 [版本记录](../CHANGELOG.md) 顶部增加日期、用户变化、配置/数据兼容性和升级注意事项。
+3. 同步安装包默认版本、示例命令和三份正式手册。
+4. 本地执行下面的完整验证和安装包内容检查。
+5. 合并到 `main` 后创建带签名或受保护的 `v<版本>` 标签并推送。
+6. 等待 GitHub Actions 成功，检查 Release 附件、SHA-256 和 GHCR 镜像，再在真实 Linux 服务器执行部署手册第 6 章。
+
 开发机：
 
 ```powershell
@@ -473,6 +495,7 @@ npm run docs:check
 npm test
 npm run build
 npm audit --omit=dev
+npm run release:package
 git diff --check
 ```
 
@@ -507,4 +530,4 @@ git diff --check
 git ls-files -ci --exclude-standard
 ```
 
-不得提交 `dist/`、`data/`、`node_modules/`、覆盖率、临时迁移脚本、日志、数据库、媒体输出、截图、真实 `.env`、证书私钥或供应商密钥。需要提交的示例文件只能包含明确的非真实值。生产依赖还应执行 `npm audit --omit=dev`，并在目标 Linux 主机完成真实镜像、HTTPS、持久化和备份恢复验收。
+不得提交 `dist/`、`.artifacts/`、`data/`、`node_modules/`、覆盖率、临时迁移脚本、日志、数据库、媒体输出、截图、真实 `.env`、证书私钥或供应商密钥。需要提交的示例文件只能包含明确的非真实值。生产依赖还应执行 `npm audit --omit=dev`，并在目标 Linux 主机完成真实镜像、HTTPS、持久化和备份恢复验收。

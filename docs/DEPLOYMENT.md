@@ -1,6 +1,6 @@
 # 科普视频工作台部署运维手册
 
-本文档面向负责局域网服务器、HTTPS、数据和备份的管理员。浏览器操作见 [详细使用说明](USER-GUIDE.md)，代码和接口实现见 [开发技术文档](DEVELOPMENT.md)。本手册的命令以仓库根目录为工作目录，历史设计稿不能替代当前步骤。
+本文档面向负责局域网服务器、HTTPS、数据和备份的管理员。浏览器操作见 [详细使用说明](USER-GUIDE.md)，代码和接口实现见 [开发技术文档](DEVELOPMENT.md)。推荐从 [GitHub Releases](https://github.com/cjllz/science-video-workbench/releases) 下载正式程序，不要求服务器保存源码。历史设计稿不能替代当前步骤。
 
 ## 目录
 
@@ -87,7 +87,7 @@ uname -m
 预期结果：
 
 - `x86_64`：AMD64，可部署；
-- `aarch64` 或 `arm64`：ARM64，可部署，但必须完成[第 6 章](#6-首次上线验收)中的实际视频验收；
+- `aarch64` 或 `arm64`：当前正式安装包不支持，改用 AMD64 服务器；
 - 其他值：当前不作为正式支持目标。
 
 失败处理：如果命令不可用或架构不在列表中，先停止部署。不要用未知架构直接承载生产数据。
@@ -148,48 +148,58 @@ sudo systemctl is-active docker
 
 ```text
 /srv/science-video-workbench/
-├── app/          # Git 工作树和 compose.yaml
+├── app/          # 已安装程序、Compose 和运维脚本
 ├── data/         # SQLite、素材、输出和修订
 └── backups/      # 本机备份
 ```
 
-创建目录。工作目录：任意目录。
+`install.sh` 会安全创建并标记这些目录。不要提前把其他业务文件放进 `data` 或 `backups`；脚本发现非空且没有本项目哨兵的目录时会拒绝继续。
+
+### 下载并校验正式程序
+
+在 [GitHub Releases](https://github.com/cjllz/science-video-workbench/releases) 打开目标版本，同时下载以下两个文件：
+
+- `science-video-workbench-v0.1.0-online-linux-amd64.tar.gz`；
+- `SHA256SUMS`。
+
+下面以 `0.1.0` 为示例；安装其他版本时只修改 `VERSION`。工作目录：一个新的临时目录。
 
 ```bash
-sudo install -d -m 0755 /srv/science-video-workbench
-sudo install -d -m 0755 /srv/science-video-workbench/app
-sudo install -d -m 0750 -o 10001 -g 10001 /srv/science-video-workbench/data
-sudo install -d -m 0750 /srv/science-video-workbench/backups
-printf 'science-video-workbench-data-v1\n' | \
-  sudo tee /srv/science-video-workbench/data/.science-video-workbench-data >/dev/null
-sudo chown 10001:10001 \
-  /srv/science-video-workbench/data/.science-video-workbench-data
+VERSION=0.1.0
+mkdir "science-video-release-$VERSION"
+cd "science-video-release-$VERSION"
+curl --fail --location --remote-name \
+  "https://github.com/cjllz/science-video-workbench/releases/download/v$VERSION/science-video-workbench-v$VERSION-online-linux-amd64.tar.gz"
+curl --fail --location --remote-name \
+  "https://github.com/cjllz/science-video-workbench/releases/download/v$VERSION/SHA256SUMS"
+sha256sum --check SHA256SUMS
+tar -xzf "science-video-workbench-v$VERSION-online-linux-amd64.tar.gz"
+cd "science-video-workbench-v$VERSION"
 ```
 
-预期结果：`data` 的 UID/GID 为 `10001:10001`。
+预期结果：校验输出文件名和 `OK`，解压目录内有 `VERSION`、`configure.sh`、`install.sh`、`update.sh`、`uninstall.sh`、`compose.release.yaml` 和 `deploy/`。校验失败时立即删除本次下载并重新获取，不能绕过校验。
 
 ```bash
-stat -c '%u:%g %a %n' /srv/science-video-workbench/data
+cat VERSION
+ls -la
 ```
 
-失败处理：如果不是 `10001:10001`，执行：
+版本必须与 Release 页面和压缩包文件名一致。正式安装包只包含运行配置和运维脚本，不包含源码、开发依赖、数据库、媒体或真实密钥。
+
+服务器无法访问 GitHub 时，可在可信电脑完成同样的下载和 SHA-256 校验，再通过组织批准的文件传输方式把压缩包与校验文件送到服务器。不要从聊天附件或不明网盘取得“同名程序”。
+
+### 源码构建备用路径
+
+只有开发验收、镜像仓库不可用或组织明确要求自行构建时，才从公开仓库检出精确标签：
 
 ```bash
-sudo chown -R 10001:10001 /srv/science-video-workbench/data
-sudo chmod 0750 /srv/science-video-workbench/data
-```
-
-将代码检出到 `app`。工作目录：`/srv/science-video-workbench`。
-
-```bash
-git clone <仓库地址> app
-cd app
+git clone https://github.com/cjllz/science-video-workbench.git
+cd science-video-workbench
+git checkout "v$VERSION"
 git status --short --branch
 ```
 
-预期结果：位于计划发布的分支或标签，工作树没有未提交文件。
-
-失败处理：如果服务器不允许直接访问 Git，可以通过组织批准的软件分发流程把完整发布包传到 `app`，但必须同时保留提交号或发布版本记录。
+源码路径使用仓库根目录的 `compose.yaml`、`deploy/.env.production.example` 和 `deploy/` 脚本，必须额外执行 `npm ci`、`npm run verify`、依赖审计与本机镜像构建。后续 Release 安装命令不适用于源码目录，完整开发验证见 [开发技术文档第 12 章](DEVELOPMENT.md#12-发布验证文档同步与提交规范)。
 
 先确认局域网网段，例如 `192.168.10.0/24`，以及服务器固定地址。不要照抄示例网段。Compose 会把 Caddy 端口只绑定到 `LAN_BIND_ADDRESS`，防火墙是第二层限制。
 
@@ -239,18 +249,21 @@ sudo ss -lntp | grep -E ':(80|443|8787)\b'
 
 ## 3. 生产环境变量
 
-工作目录：`/srv/science-video-workbench/app`。
+工作目录：第 2 章解压得到的 `science-video-workbench-v0.1.0` 目录。运行交互式配置器：
 
 ```bash
-cp deploy/.env.production.example deploy/.env.production
-chmod 0600 deploy/.env.production
-openssl rand -base64 32
+sudo ./configure.sh
 ```
 
-把最后一条命令生成的随机值写入 `LAN_ACCESS_TOKEN`，然后编辑配置：
+配置器会依次询问局域网名称、服务器绑定地址、端口、数据/备份路径、共享访问口令和可选 API。共享访问口令至少 16 个字符，建议使用密码管理器生成 32 字节随机值。没有管理员 API 时直接留空；用户仍可登录后在“API 设置”中提交个人配置。
+
+配置写入 `/srv/science-video-workbench/app/deploy/.env.production`，权限为 `0600`。重复运行配置器会先创建带 UTC 时间戳的 `.bak` 备份，再原子替换配置。需要自动化时可先设置各变量，并加 `NONINTERACTIVE=1`；非交互模式必须显式提供 `LAN_ACCESS_TOKEN`。
+
+需要复核或调整时：
 
 ```bash
-nano deploy/.env.production
+sudo nano /srv/science-video-workbench/app/deploy/.env.production
+sudo stat -c '%a %n' /srv/science-video-workbench/app/deploy/.env.production
 ```
 
 不要把 `deploy/.env.production` 提交到 Git、聊天、工单或日志。该文件已经被 `.gitignore` 排除。
@@ -259,8 +272,8 @@ nano deploy/.env.production
 
 | 变量 | 生产建议 | 说明 |
 | --- | --- | --- |
-| `APP_IMAGE` | `science-video-workbench` | 本地镜像名 |
-| `APP_VERSION` | 发布标签或短提交号 | 镜像标签和备份清单版本 |
+| `APP_IMAGE` | `ghcr.io/cjllz/science-video-workbench` | 正式公开容器镜像；通常不要修改 |
+| `APP_VERSION` | 安装包内 `VERSION` | 固定镜像标签和备份清单版本，不使用 `latest` |
 | `LAN_HOST` | `science-video.lan` | Caddy 证书中的局域网 DNS 名或固定 IP |
 | `LAN_BIND_ADDRESS` | 服务器固定局域网 IP | Caddy 只绑定该宿主机网卡；不能填不存在的地址 |
 | `HTTP_PORT` | `80` | 仅用于 HTTP 到 HTTPS 跳转 |
@@ -317,11 +330,13 @@ nano deploy/.env.production
 
 ### 检查配置文件
 
-工作目录：`/srv/science-video-workbench/app`。
+工作目录：解压后的正式安装包目录。
 
 ```bash
-stat -c '%a %n' deploy/.env.production
-docker compose --env-file deploy/.env.production config --quiet
+sudo stat -c '%a %n' /srv/science-video-workbench/app/deploy/.env.production
+sudo docker compose \
+  --env-file /srv/science-video-workbench/app/deploy/.env.production \
+  -f compose.release.yaml config --quiet
 ```
 
 预期结果：权限为 `600`，Compose 配置命令无输出且退出码为 0。
@@ -335,11 +350,11 @@ docker compose --env-file deploy/.env.production config --quiet
 
 ## 4. Docker Compose 首次部署
 
-工作目录：`/srv/science-video-workbench/app`。
+工作目录：解压后的正式安装包目录。安装脚本只支持 Linux x86-64，要求 root、Docker Engine、Docker Compose v2、`curl`、`tar`、`sha256sum`、`realpath` 和 `install`。它会把运行文件安装到 `/srv/science-video-workbench/app`，拉取固定版本镜像，创建受保护的数据目录并等待 readiness。
 
 ```bash
-docker compose --env-file deploy/.env.production build --pull
-docker compose --env-file deploy/.env.production up -d
+sudo ./install.sh
+cd /srv/science-video-workbench/app
 docker compose --env-file deploy/.env.production ps
 ```
 
@@ -349,7 +364,7 @@ docker compose --env-file deploy/.env.production ps
 - `caddy` 显示 `running`；
 - `PORTS` 只出现在 Caddy 行，应用行只有容器内部的 `8787/tcp`。
 
-第一次启动可能需要数分钟下载基础镜像、apt 包、Python 包和 npm 包。
+第一次启动可能需要数分钟下载应用镜像和 Caddy 镜像。服务器不需要 Node.js、npm、Python 构建环境或源码。
 
 查看启动日志。工作目录不变：
 
@@ -455,21 +470,20 @@ Caddy CA 保存在命名卷 `science-video-workbench_caddy_data`。普通 `docke
 
 以下检查必须在实际 Linux/Docker 主机完成。本 Windows 开发机上的单元测试不能替代这些检查。
 
-### 静态与构建
+### 安装包与镜像
 
 工作目录：`/srv/science-video-workbench/app`。
 
 ```bash
-npm ci
-npm test
-npm run build
-npm audit --omit=dev
-bash -n deploy/entrypoint.sh deploy/lib.sh deploy/backup.sh deploy/restore.sh
+cat VERSION
+grep -E '^(APP_IMAGE|APP_VERSION)=' deploy/.env.production
+bash -n lib.sh configure.sh install.sh update.sh uninstall.sh \
+  deploy/lib.sh deploy/backup.sh deploy/restore.sh
 docker compose --env-file deploy/.env.production config --quiet
-docker compose --env-file deploy/.env.production build --pull
+docker compose --env-file deploy/.env.production images
 ```
 
-预期结果：测试和构建通过，生产依赖漏洞数为 0，Shell 与 Compose 校验退出 0。
+预期结果：`VERSION` 与 `APP_VERSION` 一致，`APP_IMAGE` 是正式 GHCR 地址，Shell 与 Compose 校验退出 0，镜像标签是本次发布的固定版本。源码测试、构建和生产依赖审计已经由 GitHub 标签发布流水线执行；服务器验收不重新从源码构建镜像。
 
 ### 容器安全与架构
 
@@ -526,7 +540,7 @@ sudo rm /srv/science-video-workbench/data/release-persistence-marker
 - 所有自动测试通过；
 - 生产构建通过；
 - 生产依赖审计为 0 个已知漏洞；
-- AMD64 或 ARM64 实机镜像构建通过；
+- AMD64 实机镜像拉取并运行通过；
 - app 端口未发布到宿主机；
 - HTTPS 根证书指纹已核对；
 - 非 root、只读根文件系统和 no-new-privileges 已验证；
@@ -729,43 +743,39 @@ sudo ./deploy/restore.sh \
 ```bash
 docker compose --env-file deploy/.env.production exec -T app npm run maintenance -- check-idle
 sudo ./deploy/backup.sh
-git rev-parse HEAD
+grep '^APP_VERSION=' deploy/.env.production
 docker image inspect "$(docker compose --env-file deploy/.env.production images -q app)" --format '{{.Id}}'
-git status --short --branch
 ```
 
-预期结果：空闲检查退出 0、备份通过、提交号和镜像 ID 被记录、工作树干净。
+预期结果：空闲检查退出 0、备份通过、当前版本和镜像 ID 被记录。
 
 当前项目使用幂等建表而不是版本化迁移，因此每次升级都必须先备份。
 
 ### 执行升级
 
+从目标版本 Release 下载新的压缩包和 `SHA256SUMS`，按[第 2 章](#下载并校验正式程序)校验并解压。工作目录切换到新版本的解压目录，然后执行：
+
 ```bash
-git fetch --tags --prune
-git checkout <目标发布标签或提交号>
-docker compose --env-file deploy/.env.production config --quiet
-docker compose --env-file deploy/.env.production build --pull
-docker compose --env-file deploy/.env.production up -d
+sudo ./update.sh
+cd /srv/science-video-workbench/app
 docker compose --env-file deploy/.env.production ps
 curl -k --resolve '<LAN_HOST>:443:<LAN_BIND_ADDRESS>' --fail https://<LAN_HOST>/api/ready
 ```
 
-预期结果：应用 healthy，readiness 为 `ok: true`。随后执行[第 6 章](#6-首次上线验收)的登录和功能冒烟。
+`update.sh` 会拒绝在任务运行时升级，先创建并校验备份，再替换运维文件、写入新 `APP_VERSION`、拉取固定版本镜像并强制重建容器。预期结果：应用 healthy，readiness 为 `ok: true`。随后执行[第 6 章](#6-首次上线验收)的登录和功能冒烟。
 
-### 代码/镜像回滚
+### 镜像与数据回滚
 
-如果新版本未改变存储格式，先回到记录的提交：
+如果新版本未改变存储格式，把生产环境中的 `APP_VERSION` 改回记录的旧版本，然后重建容器：
 
 ```bash
-git checkout <升级前提交号>
-docker compose --env-file deploy/.env.production build
-docker compose --env-file deploy/.env.production up -d
+sudo nano deploy/.env.production
+docker compose --env-file deploy/.env.production pull app
+docker compose --env-file deploy/.env.production up -d --force-recreate app
 docker compose --env-file deploy/.env.production ps
 ```
 
-如果新版本已经写入不兼容数据，代码回滚后还必须用升级前备份执行[第 8 章](#8-数据备份与恢复)的恢复流程。不要把新代码配旧数据或旧代码配新数据反复试错。
-
-保留旧镜像和升级前备份，直到业务验收完成。
+如果新版本已经写入不兼容数据，还必须用升级前备份执行[第 8 章](#8-数据备份与恢复)的恢复流程。不要把新镜像配旧数据或旧镜像配新数据反复试错。保留旧镜像和升级前备份，直到业务验收完成。
 
 ## 10. 服务器故障排查
 
@@ -812,7 +822,7 @@ stat -c '%u:%g %a %n' /srv/science-video-workbench/data
 | No space left | `df -h`、`df -i`、`du -sh data/*` | 输出和修订增长 | 先扩容；按业务确认后归档旧项目，不要直接删 SQLite/WAL |
 | 外部 API 超时 | 容器内 `curl -I <供应商地址>` | DNS、代理、出口防火墙或供应商故障 | 验证容器出站网络和供应商状态 |
 | AI reference 不可用 | 从公网环境访问素材 URL | 配置的是局域网地址或证书不受供应商信任 | 使用供应商可访问的公开 HTTPS 对象存储 |
-| ARM64 构建成功但运行失败 | `uname -m`、容器内 ffmpeg/TTS 检查 | 某个供应商 SDK 或媒体能力不兼容 | 停止上线，保留日志，在 AMD64 主机回退 |
+| 安装脚本提示架构不支持 | `uname -m` | 当前主机不是 x86-64/AMD64 | 停止安装，改用受支持的 AMD64 主机 |
 
 常用容器内检查：
 
@@ -851,7 +861,7 @@ docker compose --env-file deploy/.env.production exec -T app npm run maintenance
 工作目录：`/srv/science-video-workbench/app`。
 
 ```bash
-docker compose --env-file deploy/.env.production down
+sudo ./uninstall.sh
 ```
 
 该命令保留：
@@ -862,7 +872,7 @@ docker compose --env-file deploy/.env.production down
 
 不要添加 `--volumes`。
 
-### 移走代码但保留数据
+### 移走已安装程序但保留数据
 
 先执行最终备份并记录 SHA-256，然后把 `app` 目录移动到明确的归档位置：
 
@@ -875,7 +885,13 @@ sudo mv /srv/science-video-workbench/app \
 
 ### 完全销毁
 
-完全销毁会永久删除应用数据、备份和 Caddy CA。必须先经过组织的数据销毁审批，并再次核对路径。建议先移动到隔离目录，等待保留期结束后再由管理员使用受控删除工具处理。
+完全销毁会永久删除应用数据和备份。必须先经过组织的数据销毁审批，并再次核对配置中的 `DATA_DIR` 与 `BACKUP_DIR`。脚本要求两个独立确认参数，并验证项目数据哨兵：
+
+```bash
+sudo ./uninstall.sh --destroy-data --confirm-destroy-data
+```
+
+该命令仍保留生产配置和 Caddy CA，防止一次操作同时破坏所有恢复线索。建议先把数据移动到隔离目录，等待保留期结束后再由管理员使用受控删除工具处理。
 
 删除 Caddy 卷会让所有已安装根证书失效：
 
@@ -925,8 +941,8 @@ docker volume rm science-video-workbench_caddy_data science-video-workbench_cadd
 
 | 变量 | 示例/默认 | 说明 |
 | --- | --- | --- |
-| `APP_IMAGE` | `science-video-workbench` | 本地/私有镜像名称 |
-| `APP_VERSION` | `local` | 镜像标签和备份清单版本 |
+| `APP_IMAGE` | `ghcr.io/cjllz/science-video-workbench` | 正式公开镜像地址 |
+| `APP_VERSION` | `0.1.0` | 安装包固定版本；不要改成 `latest` |
 | `LAN_HOST` | `science-video.lan` | Caddy 证书中的稳定局域网 DNS 名或 IP |
 | `LAN_BIND_ADDRESS` | `192.168.10.20` | 宿主机实际局域网地址；不要用 `0.0.0.0` 代替现场核对 |
 | `HTTP_PORT` | `80` | Caddy HTTP 入口 |
@@ -947,13 +963,13 @@ docker volume rm science-video-workbench_caddy_data science-video-workbench_cadd
 | 8787/TCP | app 容器 | Compose 私有网络 | 不发布到宿主机，不供局域网直连 |
 | 5173/TCP | Vite 开发服务 | 本机回环 | 仅开发环境 |
 
-容器需要出站访问 npm/Python 源（构建时）、脚本/视频供应商、TTS 服务及现场配置的公开素材来源。入站允许范围和出站策略应由组织防火墙明确管理。
+正式安装需要出站访问 GitHub Container Registry 和 Docker Hub；运行时需要访问脚本/视频供应商、TTS 服务及现场配置的公开素材来源。只有源码构建还需要 npm、Python 和系统软件源。入站允许范围和出站策略应由组织防火墙明确管理。
 
 ### 12.5 路径
 
 | 路径 | 所在位置 | 用途 |
 | --- | --- | --- |
-| `/srv/science-video-workbench/app` | 宿主机 | Git 工作树和 Compose |
+| `/srv/science-video-workbench/app` | 宿主机 | 已安装程序、Compose、生产配置和运维脚本 |
 | `/srv/science-video-workbench/data` | 宿主机 | 持久化数据 |
 | `/srv/science-video-workbench/backups` | 宿主机 | 备份、哈希和清单 |
 | `/app/data` | app 容器 | `DATA_DIR` 的 bind mount |
@@ -968,6 +984,10 @@ docker volume rm science-video-workbench_caddy_data science-video-workbench_cadd
 | --- | --- | --- |
 | `deploy/entrypoint.sh` | 容器启动前检查数据目录和依赖 | 失败则拒绝启动 |
 | `deploy/lib.sh` | 共享路径、Compose、空闲、readiness 辅助函数 | 校验专用目录、哨兵、所有权和真实挂载 |
+| `sudo ./configure.sh` | 创建或更新生产配置 | 隐藏输入密钥、0600 权限、保留旧配置备份 |
+| `sudo ./install.sh` | 首次安装固定版本 | 检查 Linux/AMD64、目录和依赖，等待 readiness |
+| `sudo ./update.sh` | 从新 Release 升级 | 拒绝活动任务，升级前备份，失败时保留回滚信息 |
+| `sudo ./uninstall.sh` | 停止并移除容器 | 默认保留数据、备份、配置和 Caddy CA |
 | `sudo ./deploy/backup.sh` | 一致性备份 | 拒绝活动任务，停止 app，生成 SHA-256/清单，重启 |
 | `sudo ./deploy/restore.sh <备份> --confirm-restore` | 恢复数据 | 必须 root；校验哈希、候选数据、镜像、回滚目录 |
 
@@ -986,8 +1006,8 @@ HTTP 接口和状态码由 [开发技术文档第 10 章](DEVELOPMENT.md#10-http
 操作人：
 服务器：
 CPU 架构：
-发布前提交/镜像：
-发布后提交/镜像：
+发布前版本/镜像 ID：
+发布后版本/镜像 ID：
 备份归档：
 备份 SHA-256：
 Caddy 根证书 SHA-256 指纹：
@@ -998,11 +1018,11 @@ readiness 结果：
 验收人：
 ```
 
-这份记录与已验证的备份、发布标签一起保存，才构成可审计的正式发布。
+这份记录与已验证的备份、Release 页面和安装包 SHA-256 一起保存，才构成可审计的正式发布。
 
 ### 13.1 为什么必须记录
 
-代码提交、镜像、数据备份和 Caddy CA 是不同对象。只记“已升级”无法支持回滚；每次发布、恢复、证书变化和严重故障都应留下时间、操作人、目标、前后状态和验证结果。
+Release 安装包、容器镜像、数据备份和 Caddy CA 是不同对象。只记“已升级”无法支持回滚；每次发布、恢复、证书变化和严重故障都应留下时间、操作人、目标、前后状态和验证结果。
 
 ### 13.2 发布或升级记录
 
@@ -1012,8 +1032,10 @@ readiness 结果：
 验收人：
 服务器主机名/IP：
 CPU 架构：
-发布前 Git 提交：
-发布后 Git 提交：
+发布前版本：
+发布后版本：
+Release 页面：
+安装包 SHA-256：
 发布前镜像 ID：
 发布后镜像 ID：
 升级前备份归档：
@@ -1119,4 +1141,4 @@ Compose ps：
 
 ### 14.7 如何确认真正可以发布
 
-必须同时通过 `npm run verify`、Compose 配置/构建、容器安全和架构检查、真实客户端 HTTPS 登录、实际视频、重启持久化、备份恢复回环和第二份备份检查。单独看到首页或 `health` 成功不算发布完成。
+GitHub 标签流水线必须通过源码验证、依赖审计、镜像构建和安装包校验；目标服务器还必须通过 SHA-256、Compose 配置、容器安全和架构检查、真实客户端 HTTPS 登录、实际视频、重启持久化、备份恢复回环和第二份备份检查。单独看到首页或 `health` 成功不算发布完成。

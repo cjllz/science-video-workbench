@@ -46,13 +46,16 @@ npm start
 
 ## 正式部署
 
-从 [部署运维手册](docs/DEPLOYMENT.md) 第 1 章开始，依次完成 Linux 主机、生产配置、Docker Compose、HTTPS、上线验收和备份恢复。不要从内部历史规格或实施计划复制部署命令。
+正式程序发布在 [GitHub Releases](https://github.com/cjllz/science-video-workbench/releases)，服务器管理员下载 `online-linux-amd64.tar.gz` 安装包和 `SHA256SUMS`，校验后运行包内的 `configure.sh` 与 `install.sh`。安装脚本会拉取同版本的公开容器镜像；最终用户只需在浏览器访问局域网 HTTPS 地址，不需要 Git、Node.js 或源码。
+
+从 [部署运维手册](docs/DEPLOYMENT.md) 第 1 章开始，依次完成 Linux 主机、Release 下载、生产配置、HTTPS、上线验收和备份恢复。源码构建只用于开发和没有 Release 时的应急维护，不是推荐交付方式。
 
 ## 文档入口
 
 - [详细使用说明](docs/USER-GUIDE.md)：登录、创建视频、剧本和素材融合、个人 API、生成、返修与常见问题。
 - [开发技术文档](docs/DEVELOPMENT.md)：架构、代码模块、配置、数据、接口、测试、构建和提交规范。
 - [部署运维手册](docs/DEPLOYMENT.md)：Linux、Docker Compose、HTTPS、生产配置、备份恢复、升级回滚和故障处理。
+- [版本记录](CHANGELOG.md)：正式发布版本及面向管理员和用户的变化。
 - [内部历史资料](docs/internal/README.md)：历史设计规格和实施计划，不是当前操作依据。
 
 ## 开发验证
