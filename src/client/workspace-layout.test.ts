@@ -6,7 +6,7 @@ const stylesheet = readFileSync(path.resolve("src/client/styles.css"), "utf8");
 
 function rule(selector: string) {
   const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const match = new RegExp(`${escaped}\\s*\\{([^}]+)\\}`).exec(stylesheet);
+  const match = new RegExp(`(?:^|\\n)\\s*${escaped}\\s*\\{([^}]+)\\}`).exec(stylesheet);
   expect(match, `missing CSS rule for ${selector}`).not.toBeNull();
   return match?.[1] ?? "";
 }
