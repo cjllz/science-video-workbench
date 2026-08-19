@@ -13,6 +13,13 @@ const roundCount = 10;
 const workerReadyTimeoutMs = 30_000;
 const testTimeoutMs = 120_000;
 
+function withoutSqliteExperimentalWarning(stderr: string): string {
+  return stderr.replace(
+    /^\(node:\d+\) ExperimentalWarning: SQLite is an experimental feature and might change at any time\r?\n\(Use `node --trace-warnings \.\.\.` to show where the warning was created\)\r?\n?/gm,
+    ""
+  );
+}
+
 function waitForFiles(paths: string[], timeoutMs = workerReadyTimeoutMs): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   return new Promise((resolve, reject) => {
@@ -45,6 +52,12 @@ function spawnDatabaseImport(moduleUrl: string, readyPath: string, startPath: st
 describe("database initialization", () => {
   afterEach(() => {
     for (const root of temporaryRoots.splice(0)) rmSync(root, { recursive: true, force: true });
+  });
+
+  it("ignores only Node's SQLite experimental warning", () => {
+    const warning = "(node:123) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n" +
+      "(Use `node --trace-warnings ...` to show where the warning was created)\n";
+    expect(withoutSqliteExperimentalWarning(`${warning}real failure\n`)).toBe("real failure\n");
   });
 
   it("initializes one fresh database from concurrent processes", async () => {
@@ -80,7 +93,11 @@ while (!fs.existsSync(process.env.DB_INIT_START_PATH!)) Atomics.wait(new Int32Ar
         await Promise.allSettled(workers.map((worker) => worker.result));
       }
 
-      expect(results, `round ${round + 1}\n${results.map((result) => result.stderr).filter(Boolean).join("\n")}`).toEqual(
+      const normalizedResults = results.map((result) => ({
+        ...result,
+        stderr: withoutSqliteExperimentalWarning(result.stderr)
+      }));
+      expect(normalizedResults, `round ${round + 1}\n${results.map((result) => result.stderr).filter(Boolean).join("\n")}`).toEqual(
         Array.from({ length: workerCount }, () => ({ code: 0, stderr: "" }))
       );
     }
