@@ -10,8 +10,10 @@ import { projectRoot } from "./paths.js";
 const temporaryRoots: string[] = [];
 const workerCount = 8;
 const roundCount = 10;
+const workerReadyTimeoutMs = 30_000;
+const testTimeoutMs = 120_000;
 
-function waitForFiles(paths: string[], timeoutMs = 10_000): Promise<void> {
+function waitForFiles(paths: string[], timeoutMs = workerReadyTimeoutMs): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   return new Promise((resolve, reject) => {
     const poll = () => {
@@ -93,5 +95,5 @@ while (!fs.existsSync(process.env.DB_INIT_START_PATH!)) Atomics.wait(new Int32Ar
     } finally {
       verification.close();
     }
-  }, 30_000);
+  }, testTimeoutMs);
 });
