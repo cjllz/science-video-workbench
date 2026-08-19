@@ -159,13 +159,13 @@ sudo systemctl is-active docker
 
 在 [GitHub Releases](https://github.com/cjllz/science-video-workbench/releases) 打开目标版本，同时下载以下两个文件：
 
-- `science-video-workbench-v0.1.0-online-linux-amd64.tar.gz`；
+- `science-video-workbench-v0.1.1-online-linux-amd64.tar.gz`；
 - `SHA256SUMS`。
 
-下面以 `0.1.0` 为示例；安装其他版本时只修改 `VERSION`。工作目录：一个新的临时目录。
+下面以 `0.1.1` 为示例；安装其他版本时只修改 `VERSION`。工作目录：一个新的临时目录。
 
 ```bash
-VERSION=0.1.0
+VERSION=0.1.1
 mkdir "science-video-release-$VERSION"
 cd "science-video-release-$VERSION"
 curl --fail --location --remote-name \
@@ -249,7 +249,7 @@ sudo ss -lntp | grep -E ':(80|443|8787)\b'
 
 ## 3. 生产环境变量
 
-工作目录：第 2 章解压得到的 `science-video-workbench-v0.1.0` 目录。运行交互式配置器：
+工作目录：第 2 章解压得到的 `science-video-workbench-v0.1.1` 目录。运行交互式配置器：
 
 ```bash
 sudo ./configure.sh
@@ -942,7 +942,7 @@ docker volume rm science-video-workbench_caddy_data science-video-workbench_cadd
 | 变量 | 示例/默认 | 说明 |
 | --- | --- | --- |
 | `APP_IMAGE` | `ghcr.io/cjllz/science-video-workbench` | 正式公开镜像地址 |
-| `APP_VERSION` | `0.1.0` | 安装包固定版本；不要改成 `latest` |
+| `APP_VERSION` | `0.1.1` | 安装包固定版本；不要改成 `latest` |
 | `LAN_HOST` | `science-video.lan` | Caddy 证书中的稳定局域网 DNS 名或 IP |
 | `LAN_BIND_ADDRESS` | `192.168.10.20` | 宿主机实际局域网地址；不要用 `0.0.0.0` 代替现场核对 |
 | `HTTP_PORT` | `80` | Caddy HTTP 入口 |

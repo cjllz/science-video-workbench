@@ -272,8 +272,8 @@ describe("server release contracts", () => {
       copyFileSync(path.join(projectRoot, "deploy", "restore.sh"), path.join(bundleRoot, "deploy", "restore.sh"));
       writeFileSync(path.join(bundleRoot, "VERSION"), "0.2.0\n");
       const fakeBackup = `#!/usr/bin/env bash\nset -e\narchive='${bashPath(path.join(backupRoot, "pre-update.tar.gz"))}'\n: > "$archive"\n: > "$archive.sha256"\nprintf '%s\\n' "$archive"\n`;
-      writeFileSync(path.join(bundleRoot, "deploy", "backup.sh"), fakeBackup);
-      writeFileSync(path.join(installRoot, "deploy", "backup.sh"), fakeBackup);
+      writeFileSync(path.join(bundleRoot, "deploy", "backup.sh"), fakeBackup, { mode: 0o755 });
+      writeFileSync(path.join(installRoot, "deploy", "backup.sh"), fakeBackup, { mode: 0o755 });
       writeFileSync(
         environmentFile,
         "APP_IMAGE='ghcr.io/cjllz/science-video-workbench'\nAPP_VERSION='0.1.0'\n"

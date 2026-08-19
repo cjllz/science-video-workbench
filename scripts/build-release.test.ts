@@ -6,6 +6,7 @@ import { spawnSync } from "node:child_process";
 import { afterEach, describe, expect, it } from "vitest";
 
 const projectRoot = path.resolve(import.meta.dirname, "..");
+const projectVersion = JSON.parse(readFileSync(path.join(projectRoot, "package.json"), "utf8")).version;
 const temporaryDirectories: string[] = [];
 
 afterEach(() => {
@@ -22,7 +23,7 @@ describe("release packager", () => {
     });
     expect(result.status, result.stderr).toBe(0);
 
-    const archiveName = "science-video-workbench-v0.1.0-online-linux-amd64.tar.gz";
+    const archiveName = `science-video-workbench-v${projectVersion}-online-linux-amd64.tar.gz`;
     const archivePath = path.join(outputDirectory, archiveName);
     const checksum = createHash("sha256").update(readFileSync(archivePath)).digest("hex");
     expect(readFileSync(`${archivePath}.sha256`, "utf8")).toBe(`${checksum}  ${archiveName}\n`);
@@ -31,7 +32,7 @@ describe("release packager", () => {
     const listing = spawnSync("tar", ["-tzf", archivePath], { encoding: "utf8" });
     expect(listing.status, listing.stderr).toBe(0);
     const entries = listing.stdout.split(/\r?\n/).filter(Boolean).filter((entry) => !entry.endsWith("/"));
-    const root = "science-video-workbench-v0.1.0/";
+    const root = `science-video-workbench-v${projectVersion}/`;
     expect(entries.sort()).toEqual([
       `${root}Caddyfile`,
       `${root}README.txt`,
