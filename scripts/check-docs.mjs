@@ -4,12 +4,15 @@ import process from "node:process";
 
 const root = process.cwd();
 const failures = [];
-const requiredFiles = [
+const officialFiles = [
   "README.md",
-  "docs/PROJECT-MANUAL.md",
-  "docs/internal/README.md"
+  "docs/USER-GUIDE.md",
+  "docs/DEVELOPMENT.md",
+  "docs/DEPLOYMENT.md"
 ];
+const requiredFiles = [...officialFiles, "docs/internal/README.md"];
 const forbiddenPaths = [
+  "docs/PROJECT-MANUAL.md",
   "docs/deployment/linux-docker.md",
   "docs/superpowers"
 ];
@@ -118,7 +121,7 @@ for (const file of files) {
 }
 for (const [file, markdown] of contents) verifyLinks(file, markdown, headingsByFile);
 
-for (const official of ["README.md", "docs/PROJECT-MANUAL.md"]) {
+for (const official of officialFiles) {
   const absolute = path.join(root, official);
   if (!existsSync(absolute)) continue;
   const markdown = readFileSync(absolute, "utf8");
