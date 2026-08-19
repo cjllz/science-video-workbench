@@ -172,7 +172,7 @@ Caddy 在宿主机绑定 80/443；应用端口 8787 只在 Compose 私有网络�
 
 ### 前置条件
 
-- Node.js `22.12.0` 或更新版本。
+- Node.js `22.13.0` 或更新版本。
 - npm（随 Node.js 安装）。
 - Python `3.10` 或更新版本。
 - 可访问 npm 和 Python 包源。
@@ -194,7 +194,7 @@ npm --version
 python3 --version
 ```
 
-Node 低于 22.12 时不要继续。Python 命令名只有 `python3` 时，可以使用 `python3 -m pip install -r requirements.txt` 代替 npm 的 TTS 辅助脚本。
+Node 低于 22.13 时不要继续。Python 命令名只有 `python3` 时，可以使用 `python3 -m pip install -r requirements.txt` 代替 npm 的 TTS 辅助脚本。
 
 ### 安装并启动
 
@@ -241,7 +241,7 @@ npm start
 
 | 现象 | 检查 | 处理 |
 | --- | --- | --- |
-| `EBADENGINE` | `node --version` | 升级到 Node 22.12+ 后重新安装依赖 |
+| `EBADENGINE` | `node --version` | 升级到 Node 22.13+ 后重新安装依赖 |
 | 5173 或 8787 被占用 | 查找占用端口的进程 | 停止旧开发进程，不要同时启动两套写同一数据目录的服务 |
 | TTS 导入失败 | `python -c "import edge_tts"` | 重新执行 `npm run setup:tts`，核对 Python/pip 环境 |
 | ffmpeg 不可用 | 查看 `/api/ready` 的失败组件 | 允许 `ffmpeg-static` 安装，或通过绝对路径设置 `FFMPEG_PATH` |
@@ -251,7 +251,7 @@ npm start
 
 ### 依赖与常用命令
 
-推荐在 Node.js `22.12.0` 或更新版本、Python `3.10` 或更新版本上开发。生产容器使用 Node 22 Bookworm、系统 ffmpeg、Python 虚拟环境和 `tini`。本地依赖安装：
+推荐在 Node.js `22.13.0` 或更新版本、Python `3.10` 或更新版本上开发。生产容器使用 Node 22 Bookworm、系统 ffmpeg、Python 虚拟环境和 `tini`。本地依赖安装：
 
 ```powershell
 npm install

@@ -14,6 +14,14 @@ afterEach(() => {
 });
 
 describe("release packager", () => {
+  it("uses a Node version with unflagged built-in SQLite support", () => {
+    const packageJson = JSON.parse(readFileSync(path.join(projectRoot, "package.json"), "utf8"));
+    const workflow = readFileSync(path.join(projectRoot, ".github", "workflows", "release.yml"), "utf8");
+
+    expect(packageJson.engines.node).toBe(">=22.13.0");
+    expect(workflow).toContain("node-version: 22.13.0");
+  });
+
   it("creates a checksummed allowlist-only online bundle", () => {
     const outputDirectory = mkdtempSync(path.join(tmpdir(), "science-video-release-"));
     temporaryDirectories.push(outputDirectory);
