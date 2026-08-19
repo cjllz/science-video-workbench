@@ -4,7 +4,7 @@ set -Eeuo pipefail
 BUNDLE_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 INSTALL_ROOT="${INSTALL_ROOT:-/srv/science-video-workbench/app}"
 ENV_FILE="${ENV_FILE:-$INSTALL_ROOT/deploy/.env.production}"
-COMPOSE_FILE="${COMPOSE_FILE:-$INSTALL_ROOT/compose.release.yaml}"
+COMPOSE_FILE="${COMPOSE_FILE:-$INSTALL_ROOT/compose.yaml}"
 DATA_SENTINEL="science-video-workbench-data-v1"
 
 die() {

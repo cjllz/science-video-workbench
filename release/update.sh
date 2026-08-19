@@ -21,9 +21,8 @@ previous_image_id="$(docker image inspect "$APP_IMAGE:$APP_VERSION" --format '{{
 [[ -x "$INSTALL_ROOT/deploy/backup.sh" ]] || die "backup.sh is missing from the installation"
 COMPOSE_FILE="$COMPOSE_FILE" ENV_FILE="$ENV_FILE" "$INSTALL_ROOT/deploy/backup.sh"
 
-for name in compose.release.yaml Caddyfile; do
-  install -m 0644 "$SCRIPT_DIR/$name" "$INSTALL_ROOT/$name"
-done
+install -m 0644 "$SCRIPT_DIR/compose.release.yaml" "$INSTALL_ROOT/compose.yaml"
+install -m 0644 "$SCRIPT_DIR/Caddyfile" "$INSTALL_ROOT/Caddyfile"
 for name in lib.sh configure.sh install.sh update.sh uninstall.sh; do
   install -m 0755 "$SCRIPT_DIR/$name" "$INSTALL_ROOT/$name"
 done

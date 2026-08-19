@@ -19,8 +19,8 @@ BACKUP_DIR="$(resolve_safe_directory BACKUP_DIR "$BACKUP_DIR")"
 assert_not_nested DATA_DIR "$DATA_DIR" BACKUP_DIR "$BACKUP_DIR"
 
 install -d -m 0755 "$INSTALL_ROOT" "$INSTALL_ROOT/deploy"
+install -m 0644 "$SCRIPT_DIR/compose.release.yaml" "$INSTALL_ROOT/compose.yaml"
 if [[ "$(realpath -m -- "$SCRIPT_DIR")" != "$(realpath -m -- "$INSTALL_ROOT")" ]]; then
-  install -m 0644 "$SCRIPT_DIR/compose.release.yaml" "$INSTALL_ROOT/compose.release.yaml"
   install -m 0644 "$SCRIPT_DIR/Caddyfile" "$INSTALL_ROOT/Caddyfile"
   for name in lib.sh configure.sh install.sh update.sh uninstall.sh; do
     install -m 0755 "$SCRIPT_DIR/$name" "$INSTALL_ROOT/$name"
@@ -42,7 +42,7 @@ printf '%s\n' "$DATA_SENTINEL" >"$DATA_DIR/.science-video-workbench-data"
 chown 10001:10001 "$DATA_DIR/.science-video-workbench-data"
 install -d -m 0750 "$BACKUP_DIR"
 
-COMPOSE_FILE="$INSTALL_ROOT/compose.release.yaml"
+COMPOSE_FILE="$INSTALL_ROOT/compose.yaml"
 compose_cmd config --quiet
 compose_cmd pull
 compose_cmd up -d

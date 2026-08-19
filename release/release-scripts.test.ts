@@ -92,6 +92,11 @@ describe("server release contracts", () => {
   });
 
   it("allows packaged maintenance scripts to select the release Compose file", () => {
+    const releaseLibrary = releaseFile("lib.sh");
+    const install = releaseFile("install.sh");
+    expect(releaseLibrary).toContain('COMPOSE_FILE="${COMPOSE_FILE:-$INSTALL_ROOT/compose.yaml}"');
+    expect(install).toContain('"$SCRIPT_DIR/compose.release.yaml" "$INSTALL_ROOT/compose.yaml"');
+
     const deploymentLibrary = readFileSync(path.join(projectRoot, "deploy", "lib.sh"), "utf8");
     expect(deploymentLibrary).toContain('COMPOSE_FILE="${COMPOSE_FILE:-$PROJECT_ROOT/compose.yaml}"');
     expect(deploymentLibrary).toContain('-f "$COMPOSE_FILE"');
