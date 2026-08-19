@@ -21,6 +21,7 @@
     "test:watch": "vitest",
     "qa:visual": "node scripts/visual-check.mjs",
     "docs:check": "node scripts/check-docs.mjs",
+    "release:package": "node scripts/build-release.mjs",
     "verify": "npm run docs:check && npm test && npm run build"
   },
   "dependencies": {
