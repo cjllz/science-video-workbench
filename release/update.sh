@@ -23,6 +23,7 @@ COMPOSE_FILE="$COMPOSE_FILE" ENV_FILE="$ENV_FILE" "$INSTALL_ROOT/deploy/backup.s
 
 install -m 0644 "$SCRIPT_DIR/compose.release.yaml" "$INSTALL_ROOT/compose.yaml"
 install -m 0644 "$SCRIPT_DIR/Caddyfile" "$INSTALL_ROOT/Caddyfile"
+install -m 0644 "$SCRIPT_DIR/VERSION" "$INSTALL_ROOT/VERSION"
 for name in lib.sh configure.sh install.sh update.sh uninstall.sh; do
   install -m 0755 "$SCRIPT_DIR/$name" "$INSTALL_ROOT/$name"
 done

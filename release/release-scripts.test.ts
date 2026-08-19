@@ -96,6 +96,7 @@ describe("server release contracts", () => {
     const install = releaseFile("install.sh");
     expect(releaseLibrary).toContain('COMPOSE_FILE="${COMPOSE_FILE:-$INSTALL_ROOT/compose.yaml}"');
     expect(install).toContain('"$SCRIPT_DIR/compose.release.yaml" "$INSTALL_ROOT/compose.yaml"');
+    expect(install).toContain('"$SCRIPT_DIR/VERSION" "$INSTALL_ROOT/VERSION"');
 
     const deploymentLibrary = readFileSync(path.join(projectRoot, "deploy", "lib.sh"), "utf8");
     expect(deploymentLibrary).toContain('COMPOSE_FILE="${COMPOSE_FILE:-$PROJECT_ROOT/compose.yaml}"');

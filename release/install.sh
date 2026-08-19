@@ -22,6 +22,7 @@ install -d -m 0755 "$INSTALL_ROOT" "$INSTALL_ROOT/deploy"
 install -m 0644 "$SCRIPT_DIR/compose.release.yaml" "$INSTALL_ROOT/compose.yaml"
 if [[ "$(realpath -m -- "$SCRIPT_DIR")" != "$(realpath -m -- "$INSTALL_ROOT")" ]]; then
   install -m 0644 "$SCRIPT_DIR/Caddyfile" "$INSTALL_ROOT/Caddyfile"
+  install -m 0644 "$SCRIPT_DIR/VERSION" "$INSTALL_ROOT/VERSION"
   for name in lib.sh configure.sh install.sh update.sh uninstall.sh; do
     install -m 0755 "$SCRIPT_DIR/$name" "$INSTALL_ROOT/$name"
   done
