@@ -28,6 +28,7 @@ DATA_DIR="$(resolve_safe_directory DATA_DIR "$DATA_DIR")"
 BACKUP_DIR="$(resolve_safe_directory BACKUP_DIR "$BACKUP_DIR")"
 assert_not_nested DATA_DIR "$DATA_DIR" BACKUP_DIR "$BACKUP_DIR"
 require_data_layout "$DATA_DIR"
+require_backup_layout "$BACKUP_DIR"
 printf 'destroying DATA_DIR=%s and BACKUP_DIR=%s\n' "$DATA_DIR" "$BACKUP_DIR"
 rm -rf -- "$DATA_DIR" "$BACKUP_DIR"
 printf 'persistent data and backups were destroyed; Caddy CA and production configuration were preserved\n'

@@ -6,6 +6,7 @@ INSTALL_ROOT="${INSTALL_ROOT:-/srv/science-video-workbench/app}"
 ENV_FILE="${ENV_FILE:-$INSTALL_ROOT/deploy/.env.production}"
 COMPOSE_FILE="${COMPOSE_FILE:-$INSTALL_ROOT/compose.yaml}"
 DATA_SENTINEL="science-video-workbench-data-v1"
+BACKUP_SENTINEL="science-video-workbench-backups-v1"
 
 die() {
   printf 'error: %s\n' "$*" >&2
@@ -38,8 +39,11 @@ resolve_safe_directory() {
   if [[ -n "${HOME:-}" ]]; then
     resolved_home="$(realpath -m -- "$HOME")"
   fi
-  if [[ "$resolved" == "/" || "$resolved" == "$resolved_home" || "$resolved" == "$(realpath -m -- "$INSTALL_ROOT")" ]]; then
-    die "unsafe $label: root, home, and INSTALL_ROOT are forbidden"
+  local resolved_install
+  resolved_install="$(realpath -m -- "$INSTALL_ROOT")"
+  if [[ "$resolved" == "/" || "$resolved" == "$resolved_home" || "$resolved" == "$resolved_install" \
+    || "$resolved" == "$resolved_install/"* || "$resolved_install" == "$resolved/"* ]]; then
+    die "unsafe $label: root, home, and paths overlapping INSTALL_ROOT are forbidden"
   fi
   printf '%s\n' "$resolved"
 }
@@ -58,6 +62,45 @@ require_data_layout() {
     sentinel="$(tr -d '\r\n' <"$directory/.science-video-workbench-data")"
   fi
   [[ "$sentinel" == "$DATA_SENTINEL" ]] || die "DATA_DIR is missing the required data sentinel"
+}
+
+require_backup_layout() {
+  local directory="$1"
+  local sentinel=""
+  if [[ -f "$directory/.science-video-workbench-backups" ]]; then
+    sentinel="$(tr -d '\r\n' <"$directory/.science-video-workbench-backups")"
+  fi
+  [[ "$sentinel" == "$BACKUP_SENTINEL" ]] || die "BACKUP_DIR is missing the required backup sentinel"
+}
+
+initialize_data_directory() {
+  local directory="$1"
+  [[ ! -e "$directory" || -d "$directory" ]] || die "DATA_DIR is not a directory: $directory"
+  if [[ -d "$directory" ]]; then
+    if [[ -e "$directory/.science-video-workbench-data" ]]; then
+      require_data_layout "$directory"
+    elif find "$directory" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null | grep -q .; then
+      die "DATA_DIR is not empty and has no project data sentinel: $directory"
+    fi
+  fi
+  install -d -m 0750 -o 10001 -g 10001 "$directory" "$directory/outputs" "$directory/materials"
+  printf '%s\n' "$DATA_SENTINEL" >"$directory/.science-video-workbench-data"
+  chown 10001:10001 "$directory/.science-video-workbench-data"
+}
+
+initialize_backup_directory() {
+  local directory="$1"
+  [[ ! -e "$directory" || -d "$directory" ]] || die "BACKUP_DIR is not a directory: $directory"
+  if [[ -d "$directory" ]]; then
+    if [[ -e "$directory/.science-video-workbench-backups" ]]; then
+      require_backup_layout "$directory"
+    elif find "$directory" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null | grep -q .; then
+      die "BACKUP_DIR is not empty and has no project backup sentinel: $directory"
+    fi
+  fi
+  install -d -m 0750 "$directory"
+  printf '%s\n' "$BACKUP_SENTINEL" >"$directory/.science-video-workbench-backups"
+  chmod 0600 "$directory/.science-video-workbench-backups"
 }
 
 load_environment() {
@@ -86,6 +129,7 @@ wait_for_readiness() {
 validate_scalar() {
   local label="$1" value="${2:-}"
   [[ "$value" != *$'\n'* && "$value" != *$'\r'* ]] || die "$label cannot contain a newline"
+  [[ "$value" != *"'"* ]] || die "$label cannot contain a single quote"
 }
 
 replace_environment_value() {

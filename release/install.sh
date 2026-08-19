@@ -12,7 +12,11 @@ for command in docker curl tar sha256sum realpath install; do
   require_command "$command"
 done
 docker compose version >/dev/null 2>&1 || die "Docker Compose v2 is required"
+[[ -f "$SCRIPT_DIR/VERSION" ]] || die "release VERSION file is missing"
+bundle_version="$(tr -d '\r\n' <"$SCRIPT_DIR/VERSION")"
+[[ "$bundle_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || die "release VERSION is invalid"
 load_environment
+[[ "$APP_VERSION" == "$bundle_version" ]] || die "APP_VERSION must match release VERSION $bundle_version"
 
 DATA_DIR="$(resolve_safe_directory DATA_DIR "$DATA_DIR")"
 BACKUP_DIR="$(resolve_safe_directory BACKUP_DIR "$BACKUP_DIR")"
@@ -33,15 +37,8 @@ if [[ "$(realpath -m -- "$SCRIPT_DIR")" != "$(realpath -m -- "$INSTALL_ROOT")" ]
   fi
 fi
 
-if [[ -e "$DATA_DIR" && ! -f "$DATA_DIR/.science-video-workbench-data" ]]; then
-  if find "$DATA_DIR" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null | grep -q .; then
-    die "DATA_DIR is not empty and has no project data sentinel: $DATA_DIR"
-  fi
-fi
-install -d -m 0750 -o 10001 -g 10001 "$DATA_DIR" "$DATA_DIR/outputs" "$DATA_DIR/materials"
-printf '%s\n' "$DATA_SENTINEL" >"$DATA_DIR/.science-video-workbench-data"
-chown 10001:10001 "$DATA_DIR/.science-video-workbench-data"
-install -d -m 0750 "$BACKUP_DIR"
+initialize_data_directory "$DATA_DIR"
+initialize_backup_directory "$BACKUP_DIR"
 
 COMPOSE_FILE="$INSTALL_ROOT/compose.yaml"
 compose_cmd config --quiet

@@ -1,5 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
+import { gzipSync } from "node:zlib";
 import {
   chmodSync,
   copyFileSync,
@@ -71,10 +72,37 @@ try {
   }
   writeFileSync(path.join(packageRoot, "VERSION"), `${version}\n`, { mode: 0o644 });
 
-  const tar = spawnSync("tar", ["-czf", archivePath, "-C", stagingDirectory, rootName], {
-    encoding: "utf8"
-  });
-  if (tar.status !== 0) throw new Error(`tar failed: ${tar.stderr || tar.stdout}`);
+  let tarCommand = "tar";
+  let tarPathForCommand;
+  let stagingDirectoryForCommand;
+  if (process.platform === "win32") {
+    const gitExecPath = spawnSync("git", ["--exec-path"], { encoding: "utf8" }).stdout.trim();
+    const gitTar = gitExecPath ? path.resolve(gitExecPath, "..", "..", "..", "usr", "bin", "tar.exe") : "";
+    if (gitTar && existsSync(gitTar)) tarCommand = gitTar;
+  }
+  const tarPath = path.join(stagingDirectory, "release.tar");
+  const commandPath = (value) => process.platform === "win32"
+    ? value.replace(/^([A-Za-z]):\\/, (_, drive) => `/${drive.toLowerCase()}/`).replaceAll("\\", "/")
+    : value;
+  tarPathForCommand = commandPath(tarPath);
+  stagingDirectoryForCommand = commandPath(stagingDirectory);
+  const executableEntries = [...executableTargets].map((target) => `${rootName}/${target}`);
+  const regularEntries = [...files.values(), "VERSION"]
+    .filter((target) => !executableTargets.has(target))
+    .map((target) => `${rootName}/${target}`);
+  const createTar = spawnSync(
+    tarCommand,
+    ["-cf", tarPathForCommand, "--format=ustar", "--mode=0755", "--no-recursion", "-C", stagingDirectoryForCommand, ...executableEntries],
+    { encoding: "utf8" }
+  );
+  if (createTar.status !== 0) throw new Error(`tar failed: ${createTar.stderr || createTar.stdout}`);
+  const appendTar = spawnSync(
+    tarCommand,
+    ["-rf", tarPathForCommand, "--format=ustar", "--mode=0644", "--no-recursion", "-C", stagingDirectoryForCommand, ...regularEntries],
+    { encoding: "utf8" }
+  );
+  if (appendTar.status !== 0) throw new Error(`tar append failed: ${appendTar.stderr || appendTar.stdout}`);
+  writeFileSync(archivePath, gzipSync(readFileSync(tarPath)));
 
   const hash = createHash("sha256").update(readFileSync(archivePath)).digest("hex");
   const checksumLine = `${hash}  ${archiveName}\n`;

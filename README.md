@@ -25,9 +25,15 @@
 
 不支持公网直连、路由器端口转发、多应用副本、多个主机共享 SQLite、Kubernetes 或无停机备份。完整边界、前置检查和回滚要求见 [部署运维手册](docs/DEPLOYMENT.md)。
 
+## 正式部署
+
+正式程序发布在 [GitHub Releases](https://github.com/cjllz/science-video-workbench/releases)，服务器管理员下载 `online-linux-amd64.tar.gz` 安装包和 `SHA256SUMS`，校验后运行包内的 `configure.sh` 与 `install.sh`。安装脚本会拉取同版本的公开容器镜像；最终用户只需在浏览器访问局域网 HTTPS 地址，不需要 Git、Node.js 或源码。
+
+从 [部署运维手册](docs/DEPLOYMENT.md) 第 1 章开始，依次完成 Linux 主机、Release 下载、生产配置、HTTPS、上线验收和备份恢复。源码构建只用于开发和没有 Release 时的应急维护，不是推荐交付方式。
+
 ## 快速本地体验
 
-要求 Node.js `22.12.0` 或更新版本、Python `3.10` 或更新版本：
+以下命令只供开发者使用，要求 Node.js `22.12.0` 或更新版本、Python `3.10` 或更新版本：
 
 ```powershell
 npm install
@@ -37,18 +43,12 @@ npm run dev
 
 打开 <http://127.0.0.1:5173>。这是本机开发地址；不要把它当作局域网生产入口，也不要在裸 HTTP 页面中填写个人 API 密钥。
 
-生产构建可用：
+本地生产构建可用：
 
 ```powershell
 npm run build
 npm start
 ```
-
-## 正式部署
-
-正式程序发布在 [GitHub Releases](https://github.com/cjllz/science-video-workbench/releases)，服务器管理员下载 `online-linux-amd64.tar.gz` 安装包和 `SHA256SUMS`，校验后运行包内的 `configure.sh` 与 `install.sh`。安装脚本会拉取同版本的公开容器镜像；最终用户只需在浏览器访问局域网 HTTPS 地址，不需要 Git、Node.js 或源码。
-
-从 [部署运维手册](docs/DEPLOYMENT.md) 第 1 章开始，依次完成 Linux 主机、Release 下载、生产配置、HTTPS、上线验收和备份恢复。源码构建只用于开发和没有 Release 时的应急维护，不是推荐交付方式。
 
 ## 文档入口
 

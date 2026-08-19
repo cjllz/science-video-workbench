@@ -477,7 +477,9 @@ npm run verify
 
 安装包通过 `scripts/build-release.mjs` 的显式白名单组装，不复制整个仓库。源码、`node_modules`、`dist`、`.git`、开发计划、数据、媒体、日志、真实环境文件和密钥都不会进入安装包。输出只写入已忽略的 `.artifacts/releases/`；脚本拒绝覆盖同名文件，避免误把旧产物当成本次发布。
 
-标签推送触发 `.github/workflows/release.yml`。流水线要求 `vMAJOR.MINOR.PATCH` 标签与 `package.json` 版本完全一致，依次执行 `npm ci`、`npm run verify`、`npm audit --omit=dev`，然后构建并推送 Linux/AMD64 镜像，最后创建 GitHub Release 并上传安装包和校验文件。任一步失败都不会创建完整正式版本。
+标签推送触发 `.github/workflows/release.yml`。流水线要求 `vMAJOR.MINOR.PATCH` 标签与 `package.json` 版本完全一致，依次执行 `npm ci`、`npm run verify`、`npm audit --omit=dev`，然后构建并推送 Linux/AMD64 镜像。流水线登出 GHCR 后必须匿名拉取固定版本成功，才会创建 GitHub Release 并上传安装包和校验文件。任一步失败都不会创建完整正式版本。
+
+GHCR 首次创建的包可能默认为私有。首个标签运行若只在匿名拉取步骤失败，应由仓库所有者在 GitHub Packages 页面把该容器包改为 Public，再重新运行失败任务；不能删除或移动已经发布的标签，也不能为了绕过门禁提前创建 Release。
 
 发布新版本时：
 

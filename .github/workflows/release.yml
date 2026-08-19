@@ -63,6 +63,12 @@ jobs:
             ghcr.io/cjllz/science-video-workbench:${{ steps.version.outputs.value }}
             ghcr.io/cjllz/science-video-workbench:latest
 
+      - name: Verify anonymous image pull
+        shell: bash
+        run: |
+          docker logout ghcr.io
+          docker pull "ghcr.io/cjllz/science-video-workbench:${{ steps.version.outputs.value }}"
+
       - name: Build release bundle
         run: npm run release:package
 

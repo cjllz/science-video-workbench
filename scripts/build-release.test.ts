@@ -49,6 +49,12 @@ describe("release packager", () => {
     ].sort());
     expect(entries.join("\n")).not.toMatch(/(?:^|\/)(?:src|node_modules|dist|data|\.git)(?:\/|$)/);
     expect(entries.join("\n")).not.toMatch(/\.env\.production$|\.(?:sqlite|db|log|mp4|pem|key)$/);
+
+    const verboseListing = spawnSync("tar", ["-tvzf", archivePath], { encoding: "utf8" });
+    expect(verboseListing.status, verboseListing.stderr).toBe(0);
+    for (const executable of ["configure.sh", "install.sh", "update.sh", "uninstall.sh", "lib.sh"]) {
+      expect(verboseListing.stdout).toMatch(new RegExp(`^-rwxr-xr-x.*${executable}$`, "m"));
+    }
   });
 
   it("refuses to overwrite an existing release archive", () => {

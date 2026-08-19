@@ -10,11 +10,9 @@ require_linux
 require_command realpath
 require_command install
 
-version="${APP_VERSION:-}"
-if [[ -z "$version" && -f "$SCRIPT_DIR/VERSION" ]]; then
-  version="$(tr -d '\r\n' <"$SCRIPT_DIR/VERSION")"
-fi
-version="${version:-0.1.0}"
+[[ -f "$SCRIPT_DIR/VERSION" ]] || die "release VERSION file is missing"
+version="$(tr -d '\r\n' <"$SCRIPT_DIR/VERSION")"
+[[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || die "release VERSION is invalid"
 
 prompt_value() {
   local variable="$1" label="$2" fallback="$3" current input
@@ -91,7 +89,7 @@ temporary="$ENV_FILE.tmp.$$"
 trap 'rm -f -- "$temporary"' EXIT
 
 write_variable() {
-  printf '%s=%s\n' "$1" "${!1:-}" >>"$temporary"
+  printf "%s='%s'\n" "$1" "${!1:-}" >>"$temporary"
 }
 
 : >"$temporary"
