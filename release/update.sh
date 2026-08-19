@@ -26,6 +26,23 @@ backup_archive="${backup_output##*$'\n'}"
 environment_backup="$ENV_FILE.pre-update-$(date -u +%Y%m%dT%H%M%SZ)"
 cp -p -- "$ENV_FILE" "$environment_backup"
 
+print_rollback_instructions() {
+  printf 'update failed; previous image id: %s\n' "${previous_image_id:-unknown}" >&2
+  printf 'previous version: %s\n' "$previous_version" >&2
+  printf 'data backup: %s\n' "$backup_archive" >&2
+  printf 'restore configuration: cp -p -- %q %q\n' "$environment_backup" "$ENV_FILE" >&2
+  printf 'restart previous image: docker compose --env-file %q -f %q up -d --force-recreate\n' "$ENV_FILE" "$COMPOSE_FILE" >&2
+  printf 'if data rollback is required: %q %q --confirm-restore\n' "$INSTALL_ROOT/deploy/restore.sh" "$backup_archive" >&2
+}
+
+handle_update_error() {
+  local status=$?
+  trap - ERR
+  print_rollback_instructions
+  exit "$status"
+}
+trap handle_update_error ERR
+
 install -m 0644 "$SCRIPT_DIR/compose.release.yaml" "$INSTALL_ROOT/compose.yaml"
 install -m 0644 "$SCRIPT_DIR/Caddyfile" "$INSTALL_ROOT/Caddyfile"
 install -m 0644 "$SCRIPT_DIR/VERSION" "$INSTALL_ROOT/VERSION"
@@ -44,12 +61,8 @@ compose_cmd config --quiet
 compose_cmd pull
 compose_cmd up -d --force-recreate
 if ! wait_for_readiness 60; then
-  printf 'update failed readiness; previous image id: %s\n' "${previous_image_id:-unknown}" >&2
-  printf 'previous version: %s\n' "$previous_version" >&2
-  printf 'data backup: %s\n' "$backup_archive" >&2
-  printf 'restore configuration: cp -p -- %q %q\n' "$environment_backup" "$ENV_FILE" >&2
-  printf 'restart previous image: docker compose --env-file %q -f %q up -d --force-recreate\n' "$ENV_FILE" "$COMPOSE_FILE" >&2
-  printf 'if data rollback is required: %q %q --confirm-restore\n' "$INSTALL_ROOT/deploy/restore.sh" "$backup_archive" >&2
+  print_rollback_instructions
   exit 1
 fi
+trap - ERR
 printf 'update completed: %s\n' "$new_version"

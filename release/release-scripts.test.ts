@@ -254,4 +254,47 @@ describe("server release contracts", () => {
     expect(update.indexOf("backup_archive=")).toBeLessThan(update.indexOf("replace_environment_value"));
     expect(update.indexOf("replace_environment_value")).toBeLessThan(update.indexOf("compose_cmd pull"));
   });
+
+  it.skipIf(!bash)("prints rollback instructions when Compose validation fails during update", () => {
+    const temporaryRoot = mkdtempSync(path.join(tmpdir(), "science-video-release-update-"));
+    const bundleRoot = path.join(temporaryRoot, "bundle");
+    const installRoot = path.join(temporaryRoot, "installed");
+    const backupRoot = path.join(temporaryRoot, "backups");
+    const environmentFile = path.join(installRoot, "deploy", ".env.production");
+    try {
+      mkdirSync(path.join(bundleRoot, "deploy"), { recursive: true });
+      mkdirSync(path.join(installRoot, "deploy"), { recursive: true });
+      mkdirSync(backupRoot);
+      for (const name of ["lib.sh", "configure.sh", "install.sh", "update.sh", "uninstall.sh", "compose.release.yaml", "Caddyfile"]) {
+        copyFileSync(path.join(releaseRoot, name), path.join(bundleRoot, name));
+      }
+      copyFileSync(path.join(projectRoot, "deploy", "lib.sh"), path.join(bundleRoot, "deploy", "lib.sh"));
+      copyFileSync(path.join(projectRoot, "deploy", "restore.sh"), path.join(bundleRoot, "deploy", "restore.sh"));
+      writeFileSync(path.join(bundleRoot, "VERSION"), "0.2.0\n");
+      const fakeBackup = `#!/usr/bin/env bash\nset -e\narchive='${bashPath(path.join(backupRoot, "pre-update.tar.gz"))}'\n: > "$archive"\n: > "$archive.sha256"\nprintf '%s\\n' "$archive"\n`;
+      writeFileSync(path.join(bundleRoot, "deploy", "backup.sh"), fakeBackup);
+      writeFileSync(path.join(installRoot, "deploy", "backup.sh"), fakeBackup);
+      writeFileSync(
+        environmentFile,
+        "APP_IMAGE='ghcr.io/cjllz/science-video-workbench'\nAPP_VERSION='0.1.0'\n"
+      );
+      const command = `id() { printf '0\\n'; }; uname() { [[ "$1" == '-s' ]] && printf 'Linux\\n' || printf 'x86_64\\n'; }; docker() { [[ "$*" == *'config --quiet'* ]] && return 23; return 0; }; source '${bashPath(path.join(bundleRoot, "update.sh"))}'`;
+      const result = spawnSync(bash!, ["-c", command], {
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          INSTALL_ROOT: bashPath(installRoot),
+          ENV_FILE: bashPath(environmentFile),
+          COMPOSE_FILE: bashPath(path.join(installRoot, "compose.yaml"))
+        }
+      });
+      expect(result.status).toBe(23);
+      expect(result.stderr).toContain("previous version: 0.1.0");
+      expect(result.stderr).toContain("restore configuration: cp -p --");
+      expect(result.stderr).toContain("pre-update.tar.gz");
+      expect(result.stderr).toContain("restart previous image: docker compose");
+    } finally {
+      rmSync(temporaryRoot, { recursive: true, force: true });
+    }
+  });
 });
