@@ -1,11 +1,20 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
 
 const projectRoot = path.resolve(import.meta.dirname, "..");
 const releaseRoot = path.join(projectRoot, "release");
-const bashAvailable = spawnSync("bash", ["--version"], { stdio: "ignore" }).status === 0;
+const directBash = spawnSync("bash", ["--version"], { stdio: "ignore" }).status === 0 ? "bash" : undefined;
+const gitExecPath = spawnSync("git", ["--exec-path"], { encoding: "utf8" }).stdout.trim();
+const gitBash = gitExecPath ? path.resolve(gitExecPath, "..", "..", "..", "bin", "bash.exe") : undefined;
+const bash = directBash ?? (gitBash && existsSync(gitBash) ? gitBash : undefined);
+
+function bashPath(value: string): string {
+  const match = value.match(/^([A-Za-z]):\\(.*)$/);
+  return match ? `/${match[1].toLowerCase()}/${match[2].replaceAll("\\", "/")}` : value;
+}
 
 function releaseFile(name: string): string {
   const file = path.join(releaseRoot, name);
@@ -47,12 +56,44 @@ describe("server release contracts", () => {
     expect(uninstall).toContain("require_data_layout");
   });
 
-  it.skipIf(!bashAvailable)("passes Bash syntax validation", () => {
+  it.skipIf(!bash)("passes Bash syntax validation", () => {
     for (const name of ["lib.sh", "configure.sh", "install.sh", "update.sh", "uninstall.sh"]) {
       const file = path.join(releaseRoot, name);
       expect(existsSync(file), `missing release/${name}`).toBe(true);
-      const result = spawnSync("bash", ["-n", file], { encoding: "utf8" });
+      const result = spawnSync(bash!, ["-n", file], { encoding: "utf8" });
       expect(result.status, result.stderr).toBe(0);
     }
+  });
+
+  it.skipIf(!bash)("writes a complete non-interactive production environment", () => {
+    const temporaryRoot = mkdtempSync(path.join(tmpdir(), "science-video-release-config-"));
+    const environmentFile = path.join(temporaryRoot, "deploy", ".env.production");
+    try {
+      const command = `id() { printf '0\\n'; }; uname() { printf 'Linux\\n'; }; source '${bashPath(path.join(releaseRoot, "configure.sh"))}'`;
+      const result = spawnSync(bash!, ["-c", command], {
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          NONINTERACTIVE: "1",
+          ENV_FILE: bashPath(environmentFile),
+          INSTALL_ROOT: bashPath(path.join(temporaryRoot, "app")),
+          LAN_ACCESS_TOKEN: "test-access-token-1234"
+        }
+      });
+      expect(result.status, result.stderr).toBe(0);
+      const environment = readFileSync(environmentFile, "utf8");
+      expect(environment).toContain("APP_IMAGE=ghcr.io/cjllz/science-video-workbench");
+      expect(environment).toContain("APP_VERSION=0.1.0");
+      expect(environment).toContain("LAN_ACCESS_TOKEN=test-access-token-1234");
+      expect(environment).toContain("DATA_DIR=/srv/science-video-workbench/data");
+    } finally {
+      rmSync(temporaryRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("allows packaged maintenance scripts to select the release Compose file", () => {
+    const deploymentLibrary = readFileSync(path.join(projectRoot, "deploy", "lib.sh"), "utf8");
+    expect(deploymentLibrary).toContain('COMPOSE_FILE="${COMPOSE_FILE:-$PROJECT_ROOT/compose.yaml}"');
+    expect(deploymentLibrary).toContain('-f "$COMPOSE_FILE"');
   });
 });

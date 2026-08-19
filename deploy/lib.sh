@@ -4,6 +4,7 @@ set -Eeuo pipefail
 DEPLOY_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 PROJECT_ROOT="$(realpath -m -- "$DEPLOY_DIR/..")"
 ENV_FILE="${ENV_FILE:-$DEPLOY_DIR/.env.production}"
+COMPOSE_FILE="${COMPOSE_FILE:-$PROJECT_ROOT/compose.yaml}"
 
 die() {
   echo "$*" >&2
@@ -84,7 +85,7 @@ assert_compose_data_bind() {
 compose_cmd() {
   (
     cd -- "$PROJECT_ROOT"
-    docker compose --env-file "$ENV_FILE" -f compose.yaml "$@"
+    docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" "$@"
   )
 }
 
