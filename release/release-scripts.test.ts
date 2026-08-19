@@ -96,4 +96,23 @@ describe("server release contracts", () => {
     expect(deploymentLibrary).toContain('COMPOSE_FILE="${COMPOSE_FILE:-$PROJECT_ROOT/compose.yaml}"');
     expect(deploymentLibrary).toContain('-f "$COMPOSE_FILE"');
   });
+
+  it("publishes verified tag releases and the public amd64 image", () => {
+    const workflow = readFileSync(path.join(projectRoot, ".github", "workflows", "release.yml"), "utf8");
+    expect(workflow).toContain('tags: ["v*.*.*"]');
+    expect(workflow).toContain("contents: write");
+    expect(workflow).toContain("packages: write");
+    expect(workflow).toContain("actions/checkout@v7");
+    expect(workflow).toContain("actions/setup-node@v7");
+    expect(workflow).toContain("docker/login-action@v4");
+    expect(workflow).toContain("docker/setup-buildx-action@v4");
+    expect(workflow).toContain("docker/build-push-action@v7");
+    expect(workflow).toContain("npm run verify");
+    expect(workflow).toContain("npm audit --omit=dev");
+    expect(workflow).toContain("npm run release:package");
+    expect(workflow).toContain("platforms: linux/amd64");
+    expect(workflow).toContain("ghcr.io/cjllz/science-video-workbench");
+    expect(workflow).toContain('gh release create "$GITHUB_REF_NAME"');
+    expect(workflow).toContain("SHA256SUMS");
+  });
 });
